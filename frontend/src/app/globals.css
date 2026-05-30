@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --background: #ffffff;
+  --surface: #fafaf9;
+  --foreground: #18181b;
+  --muted: #71717a;
+  --muted-strong: #52525b;
+  --divider: #e4e4e7;
+  --divider-soft: #f4f4f5;
+  --brand-50: #f0fdf4;
+  --brand-100: #dcfce7;
+  --brand-200: #bbf7d0;
+  --brand-500: #16a34a;
+  --brand-600: #15803d;
+  --brand-700: #166534;
+  --amber-100: #fef3c7;
+  --amber-700: #b45309;
+  --red-100: #fee2e2;
+  --red-700: #b91c1c;
+  --blue-100: #dbeafe;
+  --blue-700: #1d4ed8;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-strong: var(--muted-strong);
+  --color-divider: var(--divider);
+  --color-divider-soft: var(--divider-soft);
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-200: var(--brand-200);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+  --color-amber-100: var(--amber-100);
+  --color-amber-700: var(--amber-700);
+  --color-red-100: var(--red-100);
+  --color-red-700: var(--red-700);
+  --color-blue-100: var(--blue-100);
+  --color-blue-700: var(--blue-700);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html,
+body {
+  background: var(--surface);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: var(--brand-100);
+  color: var(--brand-700);
+}
+
+/* Smooth pulsing dot for the "Live" status indicator */
+@keyframes sentra-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.92); }
+}
+
+.live-dot {
+  animation: sentra-pulse 1.8s ease-in-out infinite;
+}
