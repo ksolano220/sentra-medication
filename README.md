@@ -1,273 +1,180 @@
-# Sentra
+# Sentra Medication
 
-Runtime execution control layer for autonomous AI agents.
+**Clinical content layer for runtime AI governance in medication management workflows.**
 
-Sentra sits between agent decision-making and tool execution. It evaluates every proposed action in real time, applying policy rules, tracking cumulative risk, and enforcing decisions before anything executes.
+NYU SPS Berlin GFI 2026 · Group 3 · adaptation of [ksolano220/sentra](https://github.com/ksolano220/sentra).
 
-**Live dashboard demo:** [view on Streamlit](https://sentra-demo.streamlit.app)
-**Walkthrough video (3 min):** [watch on YouTube](https://youtu.be/KCMCZ2ueu_c)
+---
 
-![Sentra Dashboard](docs/dashboard.png)
+## What this is
+
+Microsoft open-sourced the [Agent Governance Toolkit](https://github.com/microsoft/agent-governance-toolkit) on April 2, 2026: sub-millisecond pre-execution action interception, OPA Rego + Cedar + YAML policies, EU AI Act + HIPAA mapping. That is the generic plumbing for runtime AI governance.
+
+Sentra Medication is not a competing plumbing layer. It is the **clinical content layer** that sits on top of (or alongside) that plumbing. The toolkit ships interception. Sentra ships the medication rule pack, the Article-12-shaped clinical audit format, and the medication-aware progressive escalation behavior.
+
+| | Microsoft Agent Governance Toolkit | Sentra Medication |
+|---|---|---|
+| Layer | Generic plumbing | Clinical content + behavior |
+| Policy expression | YAML, OPA Rego, Cedar | Clinical rule pack (frequency mismatch, allergy conflict, dose range, drug-drug, formulary) |
+| Audit log | Hash-chained policy events with OpenTelemetry spans | Article-12-shaped audit row with statutory citation per event |
+| Behavioral state | Stateless by design | Cumulative per-agent risk + three-strike progressive escalation (silent log → pharmacist co-sign → agent suspension) |
+| Clinical domain knowledge | None (by design) | Fachinformationen, AkdÄ guidance, ECRI canonical failure modes |
+| Who builds it | Microsoft | Hospital deployers + clinical partners |
+
+**Microsoft solved interception. Sentra solved the clinic.**
+
+---
+
+## Project status
+
+**This is an academic sprint repo for the NYU SPS Berlin GFI 2026 fellowship.** Read [docs/berlin-sprint-plan.md](docs/berlin-sprint-plan.md) and [docs/microsoft-toolkit-comparison.md](docs/microsoft-toolkit-comparison.md) before contributing.
+
+### Built and working
+
+- Deterministic policy rules engine ([`supervisor/rules.py`](supervisor/rules.py))
+- Cumulative per-agent risk + three-strike progressive escalation ([`supervisor/risk.py`](supervisor/risk.py))
+- Article-12-shaped audit log with `rule_id`, `rule_version`, `policy_hash`, `inputs_sha256`, statutory `citation` per event ([`supervisor/storage.py`](supervisor/storage.py))
+- Mock FHIR `/fhir/Patient/{id}` endpoint with canned demo patients ([`supervisor/mock_fhir.py`](supervisor/mock_fhir.py))
+- Python SDK with `evaluate()` + `@guard` decorator + medication-aware payload fields ([`sdk/client.py`](sdk/client.py))
+- Streamlit monitoring dashboard, light mode + green accent ([`dashboard/app.py`](dashboard/app.py))
+- **Two clinical rules wired end-to-end:**
+  - Methotrexate frequency mismatch (ECRI canonical hallucination: 25mg daily, correct is weekly)
+  - Allergy interaction with drug-family expansion (penicillin → amoxicillin, ampicillin, etc.)
+- **Two demo scripts that run end-to-end:**
+  - [`demo/methotrexate_scenario.py`](demo/methotrexate_scenario.py)
+  - [`demo/allergy_scenario.py`](demo/allergy_scenario.py)
+
+### Roadmap (clearly labelled, NOT built)
+
+- Native middleware integration with the Microsoft Agent Governance Toolkit (sidecar webhook pattern, see [docs/microsoft-toolkit-comparison.md](docs/microsoft-toolkit-comparison.md))
+- Azure Health Data Services integration via FHIR R4
+- Microsoft Purview AI Hub audit export
+- Azure Marketplace transactable offer via ISV Success
+- Upstream PR contributing a `clinical-medication-governed` example to the MS toolkit
+- **Agent State Continuity** (quality-scored checkpoint/restore on drift): extension of the three-strike pattern that snapshots agent context at the last good point and restores onto a fresh agent so handoff continuity is preserved without bad-state contamination
+
+---
+
+## Quick start
+
+```bash
+git clone git@github.com:ksolano220/sentra-medication.git
+cd sentra-medication
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+```
+
+### Run the supervisor + dashboard locally
+
+Three terminals:
+
+```bash
+# Terminal 1: supervisor
+.venv/bin/uvicorn supervisor.main:app --reload
+
+# Terminal 2: dashboard
+.venv/bin/streamlit run dashboard/app.py
+
+# Terminal 3: demo
+.venv/bin/python demo/methotrexate_scenario.py
+.venv/bin/python demo/allergy_scenario.py
+```
+
+Dashboard opens at `http://localhost:8501`. Supervisor at `http://127.0.0.1:8000`. Run the demo scripts and watch audit rows appear live in the dashboard.
+
+---
+
+## Architecture
+
+Out-of-process Python service. Agents call Sentra via HTTP before executing any action; Sentra evaluates against the clinical rule pack, tracks cumulative session risk, and returns allow / block / escalate. All decisions land in a tamper-evident audit log.
+
+```
+agent  →  Sentra SDK  →  supervisor/main.py  →  rules.py  →  risk.py
+                                            ↓
+                                       storage.py
+                                            ↓
+                                  runtime_log.json  →  dashboard
+```
+
+- [`supervisor/main.py`](supervisor/main.py): FastAPI server. `/agent-action` evaluates a proposed action. `/fhir/Patient/{id}` serves the mock EPR data the agent fetches before proposing. `/events` returns the audit log. `/reset` clears state for demos.
+- [`supervisor/rules.py`](supervisor/rules.py): the Python rule chain. Add clinical rules here. Each rule emits a `_build_result` carrying decision + policy_triggered + reason + citation + Article-12 audit fields.
+- [`supervisor/risk.py`](supervisor/risk.py): cumulative-risk math + three-strike shutdown. **This is the behavioral primitive Microsoft's stateless kernel does not ship.**
+- [`supervisor/storage.py`](supervisor/storage.py): JSON event log + per-agent state.
+- [`supervisor/mock_fhir.py`](supervisor/mock_fhir.py): simulated EPR endpoint. In production this would be Azure Health Data Services (FHIR R4) or the hospital's actual EPR.
+- [`sdk/client.py`](sdk/client.py): drop-in Python SDK. Fail-safe blocks on unreachable server.
+- [`dashboard/app.py`](dashboard/app.py): Streamlit dashboard. Reads the event log, surfaces live intercepts with the audit row inspector.
+
+### What an audit row looks like
+
+```json
+{
+  "timestamp": "2026-05-30 17:20:27",
+  "agent_id": "dragon-copilot-demo-001",
+  "action_type": "PRESCRIBE_MEDICATION",
+  "action_label": "Prescribe 25mg Methotrexate daily",
+  "decision": "Blocked",
+  "policy_triggered": "BLOCK_METHOTREXATE_FREQUENCY_MISMATCH",
+  "reason": "Methotrexate at daily frequency is contraindicated. Correct schedule is weekly. Sustained daily administration causes severe toxicity.",
+  "rule_id": "BLOCK_METHOTREXATE_FREQUENCY_MISMATCH",
+  "rule_version": "1.0.0",
+  "policy_hash": "b3ad16c078d02959",
+  "inputs_sha256": "e71fbc57eae17b76",
+  "citation": "ECRI 2025-2026 Top 10 Health Tech Hazards (canonical LLM medication-hallucination example); EU AI Act Article 14(4)(d) interrupt-via-stop-button."
+}
+```
+
+Every blocked event carries `rule_id`, `rule_version`, `policy_hash` (stable SHA of `rules.py` at deploy time), `inputs_sha256` (deterministic hash of the action payload), and a statutory `citation`. This is the Article-12 deployer-side traceability substrate.
+
+---
+
+## Regulatory posture
+
+**Sentra is not a medical device.** It does not diagnose, prescribe, or recommend. It expresses hospital-authored policy on actions of agents that do, and produces audit records. This keeps it outside MDR conformity scope. The agents Sentra gates are in MDR scope; Sentra is deployer-side governance infrastructure.
+
+Sentra operationalises specific EU AI Act articles. It does not deliver wholesale "AI Act compliance":
+
+- **Article 12** (automatic logging): the regulation explicitly requires automatic event logging by the system itself, manual logs do not satisfy. Sentra is Article-12-grade by construction.
+- **Article 14(4)(d)** (interrupt via stop button): the pre-execution block.
+- **Article 14(4)(e)** (override / reverse): allow / escalate routes.
+- **Article 26(5)** (deployer log retention ≥6 months): the audit log shape supports it.
+
+High-risk classification pathway for medication AI: **Article 6(1) + Annex I via MDR Annex VIII Rule 11** (medicine dosage calculator is the textbook Class IIa example). NOT Annex III point 5(a).
+
+Enforcement timeline: Aug 2, 2026 (Annex III + Article 26 deployer duties) · Aug 2, 2027 (Article 6(1) MDR-embedded) · Aug 2, 2028 (Council March 2026 agreement moved Annex I medical devices).
+
+Penalty ceiling: €15M or 3% of global annual turnover.
+
+Citation: [MDCG 2025-6 / AIB 2025-1](https://health.ec.europa.eu/document/download/b78a17d7-e3cd-4943-851d-e02a2f22bbb4_en?filename=mdcg_2025-6_en.pdf) (June 2025), Interplay between the MDR & IVDR and the AI Act.
+
+MDR + AI Act apply concurrently to the agents Sentra gates. Hospital deployers still own Article 9 risk management, Article 10 data governance, Article 27 FRIA, GDPR Article 9(2)(h) basis, and DPIA. Sentra provides the auditable substrate those documents reference.
+
+---
+
+## Context
+
+NYU SPS Berlin GFI 2026 group project, Group 3. Built to be presented to Microsoft Berlin during the fellowship week. The pitch positions Sentra as a clinical-domain partner offering that plugs into the Microsoft Agent Governance Toolkit for the medication vertical.
+
+Pitch artifacts live in `docs/`:
+
+- [`berlin-sprint-plan.md`](docs/berlin-sprint-plan.md): positioning, verbatim slide revisions, 5-day sprint plan
+- [`microsoft-toolkit-comparison.md`](docs/microsoft-toolkit-comparison.md): architecture comparison + 5 integration patterns + sprint recommendation
+- [`pitch-deck.md`](docs/pitch-deck.md): 10 slides with speaker notes and visual instructions
+- [`qa-rehearsal.md`](docs/qa-rehearsal.md): 8 rehearsed Q&A answers + 3 bonus questions
+- [`demo-narration.md`](docs/demo-narration.md): 90-second verbatim presenter script + recovery plan
+
+---
+
+## Provenance
+
+Adapted from [ksolano220/sentra](https://github.com/ksolano220/sentra), first commit **February 27, 2026**. The core supervisor + rules + risk + three-strike engine was committed by **March 12, 2026**, five weeks before the Microsoft Agent Governance Toolkit was open-sourced on April 2, 2026. Convergent design, not derivative. Receipts in the original repo's commit history.
+
+The original project was built for IBM SkillsBuild's AI Experiential Learning Lab and received the following mentor recognition:
 
 > "Amazing idea implementation. Good job, and great work on the project."
 > *IBM Mentor, SkillsBuild AI Experiential Learning Lab*
-
-## Why
-
-Autonomous AI agents can now take consequential actions: sending notifications, modifying records, approving payments, triggering workflows. Once an agent decides to act, the action usually runs. If the agent is wrong, the damage is already done.
-
-Sentra inverts that flow. Every proposed action is evaluated against declarative policy rules before it executes. Unsafe actions are blocked. Allowed actions are logged. Risk is tracked across a session so an agent that drifts over time gets shut down before it causes harm.
-
-Useful anywhere you want AI agents to take real actions without giving them a blank check: claims processing, customer communications, internal tooling, developer agents.
-
-Sentra is **model-agnostic by design**. Client systems supply their own agent and LLM infrastructure (IBM watsonx, Anthropic, OpenAI, local models). Sentra only evaluates the proposed action, so it drops in behind any agent stack. See `supervisor/` and `sdk/`: no LLM SDKs are imported.
-
-For a real-world integration, see [autonomous-claims-workflow](https://github.com/ksolano220/autonomous-claims-workflow), a multi-agent public-benefits system built on IBM watsonx.ai where Sentra sits at the tool-execution boundary.
-
----
-
-## How It Compares
-
-Most agent-safety approaches stop short of enforcement.
-
-- **Output-constrained decoding** (vLLM `guided_generate`, structured outputs, tool-use schemas). Controls what the model can *say*. Does not control what an agent does with the output.
-- **Post-execution monitoring** (audit logs, observability dashboards). Catches harm after it has already happened.
-- **Per-project validation logic**. Works once, doesn't transfer across agents or projects, drifts out of sync with policy over time.
-
-Sentra gates *actions* at the execution boundary, applies the same rules across any agent stack, and logs every decision for review. The rules engine is deterministic with no LLM in the loop, so decisions are reproducible and auditable.
-
----
-
-## Docs
-
-- [`docs/design-writeup.md`](docs/design-writeup.md). Project-level writeup: problem statement, two-layer solution, demo scenarios, evaluation alignment.
-- [`docs/architecture.md`](docs/architecture.md). Technical runtime model: policy rules, risk engine, three-strike logic, state diagram.
-- [`docs/three-strike-walkthrough.md`](docs/three-strike-walkthrough.md). End-to-end curl reproduction of the shutdown sequence against a running server.
-- [`docs/troubleshooting.md`](docs/troubleshooting.md). Common failure modes and how to resolve them.
-
----
-
-## Quick Start
-
-### 1. Clone and install
-
-```bash
-git clone https://github.com/ksolano220/sentra.git
-cd sentra
-pip install -r requirements.txt
-```
-
-### 2. Start the Sentra server
-
-```bash
-uvicorn supervisor.main:app --reload
-```
-
-Sentra runs at http://127.0.0.1:8000
-
-### 3. Test it
-
-```bash
-curl http://127.0.0.1:8000/health
-```
-
-You should see: `{"status":"ok","risk_threshold":100}`
-
-### 4. Start the dashboard (optional)
-
-```bash
-streamlit run dashboard/app.py
-```
-
-Opens at http://localhost:8501
-
----
-
-## Integrate with your project
-
-### Step 1: Copy the SDK file
-
-Copy `sdk/client.py` from this repo into your project. It's one file, one dependency (`requests`).
-
-```bash
-cp sentra/sdk/client.py your-project/sentra_client.py
-```
-
-### Step 2: Use it
-
-```python
-from sentra_client import Sentra
-
-sentra = Sentra()  # connects to localhost:8000
-
-# Before executing any agent action, check with Sentra
-result = sentra.evaluate(
-    agent_id="my_agent",
-    action="SEND_NOTIFICATION",
-    notification_type="approval",
-    context={
-        "approval_requires_verified_eligibility": True,
-        "required_documents_present": False,
-    }
-)
-
-if result.allowed:
-    send_email()
-else:
-    print(f"Blocked: {result.reason}")
-    # "Blocked: Approval notification blocked because required verification documents are missing."
-```
-
-### Step 3: That's it
-
-Every call returns a `SentraResult`:
-
-```python
-result.allowed     # bool, can the action execute?
-result.decision    # "Allowed", "Blocked", or "Agent Shut Down"
-result.reason      # why Sentra made this decision
-result.risk_score  # risk applied to this action
-```
-
-If Sentra is unreachable, the SDK **blocks by default**. No silent failures.
-
----
-
-## Decorator
-
-You can also guard functions directly:
-
-```python
-@sentra.guard("my_agent", "EXPORT_DATA", {"data_classification": "sensitive"})
-def export_records():
-    ...
-```
-
-If Sentra blocks the action, a `PermissionError` is raised before the function runs.
-
----
-
-## What Sentra Does
-
-- Intercepts proposed agent actions before execution
-- Applies deterministic policy rules (not probabilistic, no LLM in the loop)
-- Tracks cumulative risk per agent
-- Enforces three outcomes: **ALLOW**, **BLOCK**, or **AGENT SHUT DOWN**
-- Logs every event for auditability
-- Provides a real-time monitoring dashboard
-
----
-
-## Execution Control Model
-
-Every proposed action resolves to one of three outcomes.
-
-### ALLOW
-Action executes. Applied risk is added to the agent's cumulative total.
-
-### BLOCK
-Action is denied before execution. No risk is applied. The agent's `blocked_attempts` counter increments.
-
-### AGENT SHUT DOWN
-Triggered when `blocked_attempts` reaches 3 (the three-strike rule). The agent enters a terminal state. Every subsequent action is denied, regardless of content, until an operator resets the agent. This prevents an agent that has drifted from causing harm through repeated policy violations.
-
-Shutdown is irreversible from the agent's side. Only an operator clearing state brings it back online.
-
----
-
-## Risk Model
-
-- Each action has an `attempted_risk` score
-- Only allowed actions increase `cumulative_risk`
-- If projected risk exceeds threshold (100), the action is blocked
-- Blocked actions track `blocked_attempts` (unsafe intent)
-
-Example:
-```
-cumulative: 40 + attempted: 80 = projected: 120
-→ exceeds threshold (100)
-→ BLOCKED
-→ cumulative stays at 40
-```
-
----
-
-## Policy Rules
-
-Sentra ships with rules for common action types:
-
-| Action | Behavior |
-|--------|----------|
-| FILE_READ, FILE_WRITE, READ_RECORD | Always allowed (risk: 0) |
-| SEND_NOTIFICATION (rejection/review) | Allowed (risk: 0) |
-| SEND_NOTIFICATION (approval without docs) | **Blocked** |
-| SEND_NOTIFICATION (approval with docs) | Allowed (risk: 0) |
-| EXPORT_DATA (sensitive) | High risk (+80) |
-| CHANGE_PERMISSION | Always blocked |
-
-Rules are in `supervisor/rules.py`. Add your own by following the same pattern.
-
----
-
-## Dashboard
-
-Two tabs:
-
-- **Live Dashboard.** Real-time events, agent state, risk tracking, enforcement timeline.
-- **Impact Report.** Before/after comparison showing measurable outcomes.
-
-The dashboard reads from `supervisor/runtime_log.json` (auto-generated by the server) and falls back to a seeded `dashboard/demo_log.json` so the hosted demo always has something to show. Out of the box you will see three agents: one operating cleanly, one hitting the risk threshold, and one reaching the three-strike shutdown.
-
----
-
-## Limitations & Scale
-
-- A single Sentra instance handles dozens of concurrent agents comfortably. The rules engine is pure Python with no external calls, and state lookups are O(1) against an in-memory dict persisted to JSON.
-- State persistence is file-based (`supervisor/state_store.json`). Fine for single-process deployments. For multi-instance or distributed agents, swap `supervisor/storage.py` for a Redis or Postgres backend. The interface is small and intentionally isolated.
-- Rules are deterministic by design. Sentra will not learn from outcomes or adapt thresholds automatically. That is a feature for auditability and reproducibility, not a limitation to route around.
-- Sentra is an enforcement layer, not a sandbox. It controls what an agent *asks* to do through the SDK. A compromised process running outside the SDK is a separate concern.
-
----
-
-## Example: Claims Workflow
-
-See [autonomous-claims-workflow](https://github.com/ksolano220/autonomous-claims-workflow) for a full working example: 3 AI agents (powered by IBM Granite via watsonx.ai) process emergency relief claims, and Sentra gates all tool execution.
-
----
-
-## Project Structure
-
-```
-sentra/
-├── supervisor/
-│   ├── main.py          # FastAPI server, /agent-action endpoint
-│   ├── rules.py         # Policy rules engine
-│   ├── risk.py          # Cumulative risk + three-strike logic
-│   └── storage.py       # State persistence + event logging
-├── dashboard/
-│   └── app.py           # Streamlit monitoring dashboard
-├── sdk/
-│   └── client.py        # Python SDK, copy this into your project
-├── docs/
-│   ├── architecture.md
-│   ├── decision_framework.md
-│   ├── threat_model.md
-│   └── test_scenarios.md
-└── requirements.txt
-```
-
----
-
-## Design Principles
-
-- Execution must be controlled, not trusted
-- Policies must be explicit and enforceable
-- Decisions must be explainable
-- Logs must be structured and auditable
-- System must remain domain-agnostic
 
 ---
 
 ## License
 
-MIT
+MIT.
