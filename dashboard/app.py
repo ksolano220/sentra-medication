@@ -277,6 +277,28 @@ def get_why_it_matters(row):
     decision = row["decision"]
     policy = safe_text(row.get("policy_triggered")).upper()
 
+    if policy == "BLOCK_METHOTREXATE_FREQUENCY_MISMATCH":
+        return (
+            "The agent proposed methotrexate at DAILY frequency. Correct "
+            "schedule for non-oncology dosing is WEEKLY. Daily administration "
+            "causes severe bone marrow suppression, hepatic toxicity, and "
+            "death. Sentra blocked the order before pharmacy processing. This "
+            "is the canonical LLM medication hallucination from ECRI's "
+            "2025-2026 Top 10 Health Tech Hazards."
+        )
+
+    if policy == "BLOCK_ALLERGY_CONFLICT":
+        return (
+            "The agent proposed a drug from a family the patient is allergic "
+            "to. Sentra read the allergy panel from the FHIR endpoint, "
+            "expanded the drug-family (e.g. a penicillin allergy covers "
+            "amoxicillin, ampicillin, piperacillin, methicillin), and blocked "
+            "before the order could cause anaphylaxis or angioedema."
+        )
+
+    if policy == "ALLOW_PRESCRIPTION":
+        return "The prescription passed all configured clinical safety rules."
+
     if policy == "RISKY_SENSITIVE_EXTERNAL_EXPORT":
         return "The agent attempted to move sensitive data outside the approved boundary."
 
