@@ -1,0 +1,16 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environment
+.venv/
+
+# Environment variables
+.env
+
+# Runtime state (Sentra)
+supervisor/runtime_log.json
+supervisor/state_store.json
+
+# Mac OS files
+.DS_Store

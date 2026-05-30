@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+requests
+python-dotenv
+streamlit>=1.30
+audioop-lts; python_version>="3.13"
