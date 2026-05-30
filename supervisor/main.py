@@ -28,7 +28,16 @@ def _hash_inputs(payload: Dict[str, Any]) -> str:
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:16]
 
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(title="Sentra Supervisor")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(fhir_router)
 
 
