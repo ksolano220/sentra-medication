@@ -1,7 +1,8 @@
-from datetime import datetime
+import os
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from supervisor.rules import evaluate_action
@@ -41,6 +42,26 @@ app.add_middleware(
 app.include_router(fhir_router)
 
 
+# Admin-token gate for state-mutating endpoints.
+# Open by default (local dev / demo scripts run without env var). When
+# SENTRA_ADMIN_TOKEN is set (production / Azure App Service app setting),
+# state-mutating requests must include a matching X-Sentra-Admin-Token header.
+# Read-only endpoints (/health, /events, /fhir/*) remain open.
+ADMIN_TOKEN = os.environ.get("SENTRA_ADMIN_TOKEN")
+
+
+def require_admin_token(
+    x_sentra_admin_token: Optional[str] = Header(default=None),
+) -> None:
+    if ADMIN_TOKEN is None:
+        return
+    if x_sentra_admin_token != ADMIN_TOKEN:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing or invalid X-Sentra-Admin-Token header.",
+        )
+
+
 class AgentAction(BaseModel):
     agent_id: str
     action_type: str
@@ -75,7 +96,7 @@ def get_events():
 
 
 @app.post("/reset")
-def reset_state():
+def reset_state(_: None = Depends(require_admin_token)):
     reset_all_state()
     return {
         "message": "State store and runtime log reset.",
@@ -84,7 +105,10 @@ def reset_state():
 
 
 @app.post("/agent-action")
-def handle_agent_action(action: AgentAction):
+def handle_agent_action(
+    action: AgentAction,
+    _: None = Depends(require_admin_token),
+):
     agent_state = get_agent_state(action.agent_id)
 
     # initialize missing state (critical fix)
@@ -96,7 +120,7 @@ def handle_agent_action(action: AgentAction):
         current_cumulative_risk = int(agent_state["cumulative_risk"])
 
         event = {
-            "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
             "agent_id": action.agent_id,
             "action_type": action.action_type.upper(),
             "action_label": action.action_type.replace("_", " ").title(),
@@ -159,7 +183,7 @@ def handle_agent_action(action: AgentAction):
         event_trace.append("Agent execution halted")
 
     event = {
-        "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         "agent_id": action.agent_id,
         "action_type": action.action_type.upper(),
         "action_label": rule_result.get(
@@ -198,7 +222,10 @@ class ClaimEvaluationRequest(BaseModel):
 
 
 @app.post("/evaluate")
-def evaluate_claim_action(request: ClaimEvaluationRequest):
+def evaluate_claim_action(
+    request: ClaimEvaluationRequest,
+    _: None = Depends(require_admin_token),
+):
     """Adapter endpoint for claim-workflow clients.
 
     Client systems that speak in claim/tool-call terms (e.g. the

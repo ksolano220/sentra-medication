@@ -1,6 +1,11 @@
 fastapi
 uvicorn
 requests
-python-dotenv
-streamlit>=1.30
 audioop-lts; python_version>="3.13"
+
+# Note: streamlit is intentionally not pinned here. The Streamlit dashboard
+# (dashboard/app.py) is a fallback only; the primary frontend is the Next.js
+# app under frontend/. To run the Streamlit fallback locally:
+#   pip install streamlit>=1.30
+# Keeping streamlit out of the supervisor requirements cuts Azure Oryx
+# build time by ~30s and the resulting bundle by ~80MB.

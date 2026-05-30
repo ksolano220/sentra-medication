@@ -31,6 +31,7 @@ Behavior when the Sentra server is unreachable:
 """
 
 import logging
+import os
 import requests
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
@@ -48,8 +49,28 @@ class SentraResult:
 
 
 class Sentra:
-    def __init__(self, url: str = "http://127.0.0.1:8000"):
-        self.url = url.rstrip("/")
+    def __init__(
+        self,
+        url: Optional[str] = None,
+        admin_token: Optional[str] = None,
+    ):
+        self.url = (
+            url
+            or os.environ.get("SENTRA_URL")
+            or "http://127.0.0.1:8000"
+        ).rstrip("/")
+        self.admin_token = admin_token or os.environ.get("SENTRA_ADMIN_TOKEN")
+
+    def _headers(self) -> Dict[str, str]:
+        """X-Sentra-Admin-Token header for state-mutating endpoints.
+
+        Returned empty if no token is configured; the supervisor only
+        enforces the token when SENTRA_ADMIN_TOKEN is set on its side, so
+        the SDK stays drop-in for local dev.
+        """
+        if self.admin_token:
+            return {"X-Sentra-Admin-Token": self.admin_token}
+        return {}
 
     def evaluate(
         self,
@@ -97,7 +118,10 @@ class Sentra:
 
         try:
             resp = requests.post(
-                f"{self.url}/agent-action", json=payload, timeout=10
+                f"{self.url}/agent-action",
+                json=payload,
+                headers=self._headers(),
+                timeout=10,
             )
             resp.raise_for_status()
             data = resp.json()
@@ -177,4 +201,8 @@ class Sentra:
 
     def reset(self):
         """Reset all agent state and event logs."""
-        requests.post(f"{self.url}/reset", timeout=5)
+        requests.post(
+            f"{self.url}/reset",
+            headers=self._headers(),
+            timeout=5,
+        )

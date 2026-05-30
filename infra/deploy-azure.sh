@@ -95,7 +95,9 @@ ZIP_PATH="/tmp/sentra-supervisor-$(date +%s).zip"
   zip -qr "$ZIP_PATH" \
     supervisor sdk demo requirements.txt \
     -x "*__pycache__*" \
-    -x "*.venv*" )
+    -x "*.venv*" \
+    -x "supervisor/runtime_log.json" \
+    -x "supervisor/state_store.json" )
 
 echo "==> Deploying zip to $SUPERVISOR_APP"
 az webapp deploy \
