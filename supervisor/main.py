@@ -14,7 +14,22 @@ from supervisor.storage import (
     reset_all_state,
 )
 
+from supervisor.mock_fhir import router as fhir_router
+
+import hashlib
+import json
+
+
+def _hash_inputs(payload: Dict[str, Any]) -> str:
+    """SHA-256 of the action payload (first 16 hex chars). Used for
+    Article-12 audit traceability: every event row can be linked back
+    to the exact inputs that produced the decision."""
+    serialized = json.dumps(payload, sort_keys=True, default=str)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:16]
+
+
 app = FastAPI(title="Sentra Supervisor")
+app.include_router(fhir_router)
 
 
 class AgentAction(BaseModel):
@@ -25,6 +40,10 @@ class AgentAction(BaseModel):
     notification_type: Optional[str] = None
     data_classification: Optional[str] = "internal"
     destination_type: Optional[str] = "internal"
+    drug: Optional[str] = None
+    dose: Optional[str] = None
+    frequency: Optional[str] = None
+    patient_id: Optional[str] = None
     policy_context: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -92,6 +111,7 @@ def handle_agent_action(action: AgentAction):
         return event
 
     payload = action.model_dump()
+    inputs_hash = _hash_inputs(payload)
 
     rule_result = evaluate_action(payload, agent_state)
     risk_result = apply_risk(agent_state, rule_result)
@@ -152,6 +172,11 @@ def handle_agent_action(action: AgentAction):
         "decision": final_decision,
         "reason": final_reason,
         "event_trace": event_trace,
+        "rule_id": rule_result.get("rule_id", final_policy),
+        "rule_version": rule_result.get("rule_version", "1.0.0"),
+        "policy_hash": rule_result.get("policy_hash", "unknown"),
+        "inputs_sha256": inputs_hash,
+        "citation": rule_result.get("citation"),
     }
 
     append_event(event)

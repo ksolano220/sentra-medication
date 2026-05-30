@@ -361,47 +361,66 @@ st.markdown(
     """
     <style>
     .stApp {
-        background: #050608;
-        color: white;
+        background: #fafafa;
+        color: #111111;
     }
 
     .block-container {
         max-width: 1780px;
-        padding-top: 2.2rem;
+        padding-top: 1.5rem;
         padding-bottom: 2rem;
     }
 
+    .brand-strip {
+        height: 4px;
+        background: linear-gradient(90deg, #16a34a, #059669);
+        border-radius: 2px;
+        margin-bottom: 16px;
+    }
+
     .title {
-        font-size: 50px;
+        font-size: 38px;
         font-weight: 700;
-        margin-top: 3rem;
-        margin-bottom: 20px;
-        color: #ffffff;
+        margin-top: 0.5rem;
+        margin-bottom: 4px;
+        color: #111111;
+        letter-spacing: -0.01em;
+    }
+
+    .subtitle {
+        font-size: 14px;
+        color: #6b7280;
+        margin-bottom: 24px;
+        letter-spacing: 0.01em;
     }
 
     .metric-card {
-        background: rgba(255,255,255,0.03);
-        border: 1px solid rgba(255,255,255,0.06);
-        border-radius: 18px;
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
         padding: 16px 18px;
         min-height: 92px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.02);
     }
 
     .metric-title {
-        font-size: 13px;
-        color: #f3f4f6;
+        font-size: 12px;
+        color: #6b7280;
         margin-bottom: 6px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
     }
 
     .metric-value {
         font-size: 28px;
         font-weight: 700;
-        color: white;
+        color: #111111;
     }
 
     .metric-sub {
         font-size: 12px;
-        color: #d1d5db;
+        color: #9ca3af;
         margin-top: 4px;
     }
 
@@ -410,22 +429,24 @@ st.markdown(
     }
 
     .table-header {
-        font-size: 14px;
+        font-size: 12px;
         font-weight: 600;
-        border-bottom: 1px solid rgba(255,255,255,.10);
+        border-bottom: 1px solid #e5e7eb;
         padding-bottom: 10px;
-        color: #f8fafc;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
     }
 
     .cell {
         font-size: 14px;
-        color: #f1f5f9;
+        color: #111111;
         padding-top: 2px;
         padding-bottom: 2px;
     }
 
     .row-divider {
-        border-bottom: 1px solid rgba(255,255,255,.05);
+        border-bottom: 1px solid #f3f4f6;
         margin-top: 6px;
         margin-bottom: 6px;
     }
@@ -440,47 +461,49 @@ st.markdown(
     }
 
     .allowed {
-        background: rgba(22,110,60,.28);
-        color: #35e37a;
+        background: #dcfce7;
+        color: #15803d;
     }
 
     .blocked {
-        background: rgba(176,131,12,.25);
-        color: #f2c84b;
+        background: #fef3c7;
+        color: #b45309;
     }
 
     .shutdown {
-        background: rgba(134,33,33,.28);
-        color: #ff6a57;
+        background: #fee2e2;
+        color: #b91c1c;
     }
 
     .review {
-        background: rgba(55,85,160,.28);
-        color: #89b4ff;
+        background: #dbeafe;
+        color: #1d4ed8;
     }
 
     .inspect-card {
-        background: #15161c;
-        border-radius: 18px;
-        border: 1px solid rgba(255,255,255,.06);
+        background: #ffffff;
+        border-radius: 14px;
+        border: 1px solid #e5e7eb;
         padding: 24px 22px 22px 22px;
         min-height: 620px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.02);
     }
 
     .inspect-title {
         font-size: 18px;
         font-weight: 700;
-        color: white;
+        color: #111111;
         margin-bottom: 20px;
     }
 
     .inspect-group-title {
-        font-size: 12px;
-        letter-spacing: .08em;
+        font-size: 11px;
+        letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: #cbd5e1;
+        color: #6b7280;
         margin-top: 2px;
         margin-bottom: 16px;
+        font-weight: 600;
     }
 
     .inspect-block {
@@ -488,16 +511,18 @@ st.markdown(
     }
 
     .inspect-label {
-        font-size: 13px;
-        font-weight: 700;
-        color: #e2e8f0;
+        font-size: 12px;
+        font-weight: 600;
+        color: #4b5563;
         margin-bottom: 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
     }
 
     .inspect-value {
         font-size: 15px;
         line-height: 1.6;
-        color: #f8fafc;
+        color: #111111;
         white-space: pre-line;
         word-break: break-word;
     }
@@ -508,7 +533,7 @@ st.markdown(
     }
 
     .trace-list li {
-        color: #f8fafc;
+        color: #374151;
         font-size: 14px;
         line-height: 1.7;
         margin-bottom: 8px;
@@ -522,22 +547,22 @@ st.markdown(
     }
 
     .mini-card {
-        background: #1b1d24;
-        border: 1px solid rgba(255,255,255,0.05);
-        border-radius: 14px;
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
         padding: 12px 14px;
     }
 
     .mini-label {
         font-size: 12px;
-        color: #d1d5db;
+        color: #6b7280;
         margin-bottom: 4px;
     }
 
     .mini-value {
         font-size: 18px;
         font-weight: 700;
-        color: white;
+        color: #111111;
     }
 
     div[data-testid="stButton"] {
@@ -553,9 +578,9 @@ st.markdown(
         max-width: 26px !important;
         max-height: 26px !important;
         border-radius: 50% !important;
-        border: 1.5px solid rgba(255,255,255,0.4) !important;
+        border: 1.5px solid #d1d5db !important;
         background: transparent !important;
-        color: rgba(255,255,255,0.8) !important;
+        color: #6b7280 !important;
         padding: 0 !important;
         display: flex !important;
         align-items: center !important;
@@ -567,39 +592,45 @@ st.markdown(
     }
 
     div[data-testid="stButton"] > button:hover {
-        background: rgba(255,255,255,0.08) !important;
-        border-color: rgba(255,255,255,0.9) !important;
-        color: white !important;
+        background: #dcfce7 !important;
+        border-color: #16a34a !important;
+        color: #15803d !important;
     }
 
     div[data-testid="stButton"] > button[kind="secondary"] {
         background: transparent !important;
-        color: rgba(255,255,255,0.8) !important;
-        border: 1.5px solid rgba(255,255,255,0.45) !important;
+        color: #6b7280 !important;
+        border: 1.5px solid #d1d5db !important;
     }
 
     div[data-testid="stButton"] > button[kind="primary"] {
-        background: white !important;
-        color: black !important;
-        border: 1.5px solid white !important;
+        background: #16a34a !important;
+        color: white !important;
+        border: 1.5px solid #16a34a !important;
     }
 
     div[data-baseweb="select"] > div {
-        background: rgba(255,255,255,0.03) !important;
-        border-radius: 14px !important;
-        border: 1px solid rgba(255,255,255,0.06) !important;
-        color: white !important;
+        background: #ffffff !important;
+        border-radius: 12px !important;
+        border: 1px solid #d1d5db !important;
+        color: #111111 !important;
     }
 
     label, .stSelectbox label, .stSelectbox div, .stSelectbox span {
-        color: #f3f4f6 !important;
+        color: #4b5563 !important;
     }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-st.markdown('<div class="title">Sentra Dashboard</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="brand-strip"></div>'
+    '<div class="title">Sentra &middot; Medication Governance</div>'
+    '<div class="subtitle">Runtime clinical content layer for AI agents &middot; '
+    'Article-12 audit log &middot; three-strike progressive escalation</div>',
+    unsafe_allow_html=True,
+)
 
 
 @st.fragment(run_every=REFRESH_SECONDS)

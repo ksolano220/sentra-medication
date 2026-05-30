@@ -1,3 +1,4 @@
+import hashlib
 from typing import Dict, Any, Optional
 
 
@@ -18,6 +19,14 @@ ABSOLUTE_HARD_BLOCK_POLICIES = {
     "BLOCK_PERMISSION_CHANGE",
 }
 
+POLICY_VERSION = "1.0.0"
+
+try:
+    with open(__file__, "rb") as _f:
+        POLICY_HASH = hashlib.sha256(_f.read()).hexdigest()[:16]
+except Exception:
+    POLICY_HASH = "unknown"
+
 
 def _build_result(
     action_type: str,
@@ -31,6 +40,9 @@ def _build_result(
     target: str = "",
     action_label: Optional[str] = None,
     policy_description: Optional[str] = None,
+    rule_id: Optional[str] = None,
+    rule_version: str = POLICY_VERSION,
+    citation: Optional[str] = None,
 ) -> Dict[str, Any]:
     return {
         "action_type": action_type,
@@ -44,6 +56,10 @@ def _build_result(
         "attempted_risk": attempted_risk,
         "reason": reason,
         "event_trace": event_trace or [],
+        "rule_id": rule_id or policy_triggered,
+        "rule_version": rule_version,
+        "policy_hash": POLICY_HASH,
+        "citation": citation,
     }
 
 
@@ -405,6 +421,136 @@ def evaluate_action(payload: Dict[str, Any], agent_state: Dict[str, Any]) -> Dic
                 "Policy matched: RISKY_DELETE_RECORD",
                 "Attempted risk scored: +30",
                 "Action sent to threshold engine",
+            ],
+        )
+
+    if action_type == "PRESCRIBE_MEDICATION":
+        drug = str(payload.get("drug") or "").lower().strip()
+        frequency = str(payload.get("frequency") or "").lower().strip()
+        dose = str(payload.get("dose") or "").strip()
+        patient_id = str(payload.get("patient_id") or target or "").strip()
+
+        action_label = "Prescribe medication"
+        if drug:
+            parts = ["Prescribe"]
+            if dose:
+                parts.append(dose)
+            parts.append(drug.title())
+            if frequency:
+                parts.append(frequency)
+            action_label = " ".join(parts)
+
+        allergies = policy_context.get("allergies") or []
+        allergies_lower = [str(a).lower().strip() for a in allergies if str(a).strip()]
+
+        drug_families = {
+            "penicillin": {"penicillin", "amoxicillin", "ampicillin", "piperacillin", "methicillin", "oxacillin", "nafcillin", "dicloxacillin"},
+            "sulfa": {"sulfa", "sulfamethoxazole", "sulfasalazine", "sulfadiazine", "bactrim", "septra", "cotrimoxazole"},
+            "sulfa drugs": {"sulfa", "sulfamethoxazole", "sulfasalazine", "sulfadiazine", "bactrim", "septra", "cotrimoxazole"},
+            "nsaids": {"ibuprofen", "naproxen", "ketorolac", "aspirin", "diclofenac", "indomethacin"},
+            "aspirin": {"aspirin", "salicylate"},
+        }
+
+        triggered_allergy = None
+        for allergy in allergies_lower:
+            family = drug_families.get(allergy, {allergy})
+            if drug and drug in family:
+                triggered_allergy = allergy
+                break
+
+        if triggered_allergy:
+            return _build_result(
+                action_type=action_type,
+                action_label=action_label,
+                target=patient_id,
+                policy_triggered="BLOCK_ALLERGY_CONFLICT",
+                policy_description=(
+                    f"Prescription blocked: {drug.title()} conflicts with "
+                    f"a documented patient allergy ({triggered_allergy}). "
+                    "Source: FHIR AllergyIntolerance for the patient at "
+                    "evaluation time. Drug-family expansion applied "
+                    "(e.g. penicillin allergy covers amoxicillin, "
+                    "ampicillin, piperacillin). Allergy conflicts can "
+                    "cause anaphylaxis, angioedema, or death."
+                ),
+                decision="Blocked",
+                threat_type="Allergy Conflict",
+                risk=0,
+                attempted_risk=80,
+                reason=(
+                    f"Patient is allergic to {triggered_allergy}; {drug} is "
+                    "in the same drug family and is contraindicated."
+                ),
+                event_trace=[
+                    "Tool invoked: PRESCRIBE_MEDICATION",
+                    f"Drug: {drug}",
+                    f"Patient: {patient_id}",
+                    f"Allergies from FHIR: {allergies}",
+                    f"Matched allergy: {triggered_allergy}",
+                    "Policy matched: BLOCK_ALLERGY_CONFLICT",
+                    "Article 14(4)(d) interrupt triggered",
+                    "Action blocked before execution",
+                ],
+                citation="FHIR AllergyIntolerance read at evaluation time; drug-family expansion per pharmacology reference; EU AI Act Article 14(4)(d) interrupt-via-stop-button.",
+            )
+
+        daily_frequency_variants = {
+            "daily", "qd", "once daily", "every day", "1x/day", "qday", "od",
+        }
+        if drug == "methotrexate" and frequency in daily_frequency_variants:
+            return _build_result(
+                action_type=action_type,
+                action_label=action_label,
+                target=patient_id,
+                policy_triggered="BLOCK_METHOTREXATE_FREQUENCY_MISMATCH",
+                policy_description=(
+                    "Methotrexate prescribed at daily frequency. Correct "
+                    "schedule for non-oncology dosing is weekly. Daily "
+                    "methotrexate can cause severe bone marrow suppression, "
+                    "hepatic toxicity, mucositis, and death. Reference: ECRI "
+                    "2025-2026 Top 10 Health Tech Hazards (canonical LLM "
+                    "medication-hallucination example)."
+                ),
+                decision="Blocked",
+                threat_type="Medication Dosing Error",
+                risk=0,
+                attempted_risk=80,
+                reason=(
+                    "Methotrexate at daily frequency is contraindicated. "
+                    "Correct schedule is weekly. Sustained daily "
+                    "administration causes severe toxicity."
+                ),
+                event_trace=[
+                    "Tool invoked: PRESCRIBE_MEDICATION",
+                    "Drug: methotrexate",
+                    f"Frequency: {frequency}",
+                    f"Dose: {dose}",
+                    f"Patient: {patient_id}",
+                    "Policy matched: BLOCK_METHOTREXATE_FREQUENCY_MISMATCH",
+                    "Article 14(4)(d) interrupt triggered",
+                    "Action blocked before execution",
+                ],
+                citation="ECRI 2025-2026 Top 10 Health Tech Hazards (canonical LLM medication-hallucination example); EU AI Act Article 14(4)(d) interrupt-via-stop-button.",
+            )
+
+        return _build_result(
+            action_type=action_type,
+            action_label=action_label,
+            target=patient_id,
+            policy_triggered="ALLOW_PRESCRIPTION",
+            policy_description="Prescription passed all configured clinical safety rules.",
+            decision="Allowed",
+            threat_type=None,
+            risk=0,
+            attempted_risk=0,
+            reason="Prescription within policy.",
+            event_trace=[
+                "Tool invoked: PRESCRIBE_MEDICATION",
+                f"Drug: {drug or 'unspecified'}",
+                f"Frequency: {frequency or 'unspecified'}",
+                "Policy matched: ALLOW_PRESCRIPTION",
+                "Risk applied: +0",
+                "Action allowed",
             ],
         )
 

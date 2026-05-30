@@ -58,6 +58,10 @@ class Sentra:
         context: Optional[Dict[str, Any]] = None,
         target: Optional[str] = None,
         notification_type: Optional[str] = None,
+        drug: Optional[str] = None,
+        dose: Optional[str] = None,
+        frequency: Optional[str] = None,
+        patient_id: Optional[str] = None,
     ) -> SentraResult:
         """
         Evaluate a proposed agent action against Sentra policies.
@@ -84,6 +88,10 @@ class Sentra:
             "action_type": action,
             "target": target or "",
             "notification_type": notification_type or "",
+            "drug": drug or "",
+            "dose": dose or "",
+            "frequency": frequency or "",
+            "patient_id": patient_id or "",
             "policy_context": context or {},
         }
 
