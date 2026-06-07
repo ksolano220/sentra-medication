@@ -8,6 +8,24 @@ const SUPERVISOR_URL =
   process.env.NEXT_PUBLIC_SENTRA_URL || "http://127.0.0.1:8000";
 const REFRESH_MS = 2500;
 
+type TimePeriod = "today" | "7d" | "30d";
+
+const PERIOD_OPTIONS: { id: TimePeriod; label: string }[] = [
+  { id: "today", label: "Today" },
+  { id: "7d", label: "7 days" },
+  { id: "30d", label: "30 days" },
+];
+
+function cutoffMs(period: TimePeriod): number {
+  const now = Date.now();
+  const day = 24 * 3600 * 1000;
+  if (period === "today") return now - 1 * day;
+  if (period === "7d") return now - 7 * day;
+  return now - 30 * day;
+}
+
+// ---------- helpers ----------
+
 function rowKey(e: SentraEvent, i: number): string {
   return `${e.timestamp}|${e.agent_id}|${e.action_type}|${e.policy_triggered}|${i}`;
 }
@@ -26,6 +44,70 @@ function fmtTime(ts: string): string {
   }
 }
 
+function relTime(ts: string): string {
+  try {
+    const dt = new Date(ts.replace(" ", "T"));
+    if (Number.isNaN(dt.getTime())) return "—";
+    const diffSec = Math.max(0, Math.floor((Date.now() - dt.getTime()) / 1000));
+    if (diffSec < 60) return `${diffSec}s ago`;
+    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+    return `${Math.floor(diffSec / 86400)}d ago`;
+  } catch {
+    return "—";
+  }
+}
+
+function titleize(s: string | undefined | null): string {
+  if (!s) return "";
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// Receptionist-friendly display names. In production these would come from
+// the EPR / patient directory, not a hardcoded map.
+const PATIENT_NAMES: Record<string, string> = {
+  "P-2026-001": "Jane Doe",
+  "P-2026-002": "John Smith",
+  "P-2026-003": "Maria Lopez",
+};
+
+const AGENT_NAMES: Record<string, string> = {
+  "dragon-copilot-demo-001": "Clinical AI Assistant",
+  "healthcare-agent-svc-002": "Pharmacy AI",
+  "maf-clinical-pilot-003": "Clinical Pilot",
+};
+
+function patientDisplay(patientId: string | undefined): string {
+  if (!patientId) return "the patient";
+  return PATIENT_NAMES[patientId] || patientId;
+}
+
+function agentDisplay(agentId: string): string {
+  if (AGENT_NAMES[agentId]) return AGENT_NAMES[agentId];
+  return agentId
+    .replace(/-(demo|svc|pilot)-\d+$/i, "")
+    .split("-")
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : ""))
+    .join(" ");
+}
+
+function humanReason(e: SentraEvent): string {
+  switch (e.policy_triggered) {
+    case "BLOCK_METHOTREXATE_FREQUENCY_MISMATCH":
+      return "Methotrexate should only be taken weekly. Daily doses cause severe bone marrow damage and can be fatal.";
+    case "BLOCK_ALLERGY_CONFLICT":
+      return "Patient is allergic to a drug in this family. Could cause anaphylaxis.";
+    case "AGENT_SHUTDOWN_AFTER_REPEATED_BLOCKS":
+      return "AI assistant made 3 unsafe prescription attempts and was automatically taken offline. The pharmacy never received any of them.";
+    case "AGENT_ALREADY_SHUT_DOWN":
+      return "AI assistant was already taken offline. No new prescriptions reach the pharmacy from this assistant.";
+    case "ALLOW_PRESCRIPTION":
+      return "Routine prescription. No safety issues detected.";
+    default:
+      return e.reason;
+  }
+}
+
 function parseRisk(value: unknown): number {
   if (typeof value === "number") return value;
   if (typeof value === "string" && value.includes("/")) {
@@ -39,58 +121,76 @@ function parseRisk(value: unknown): number {
   return 0;
 }
 
+// ---------- decision visual ----------
+
 type DecisionStyle = {
-  bg: string;
-  text: string;
+  pillBg: string;
+  pillText: string;
   dot: string;
   label: string;
+  accent: string; // border-left color for selected rows of this state
 };
 
 function styleFor(decision: Decision | string): DecisionStyle {
   switch (decision) {
     case "Allowed":
       return {
-        bg: "bg-brand-100",
-        text: "text-brand-700",
-        dot: "bg-brand-500",
-        label: "Allowed",
+        pillBg: "bg-emerald-50",
+        pillText: "text-emerald-700",
+        dot: "bg-emerald-500",
+        label: "Sent to pharmacy",
+        accent: "border-l-emerald-500",
       };
     case "Blocked":
       return {
-        bg: "bg-amber-100",
-        text: "text-amber-700",
-        dot: "bg-amber-700",
-        label: "Blocked",
+        pillBg: "bg-amber-50",
+        pillText: "text-amber-700",
+        dot: "bg-amber-500",
+        label: "Caught before pharmacy",
+        accent: "border-l-amber-500",
       };
     case "Agent Shut Down":
       return {
-        bg: "bg-red-100",
-        text: "text-red-700",
-        dot: "bg-red-700",
-        label: "Agent shut down",
+        pillBg: "bg-rose-50",
+        pillText: "text-rose-700",
+        dot: "bg-rose-500",
+        label: "AI taken offline",
+        accent: "border-l-rose-500",
       };
     case "Require Human Review":
       return {
-        bg: "bg-blue-100",
-        text: "text-blue-700",
-        dot: "bg-blue-700",
-        label: "Review",
+        pillBg: "bg-sky-50",
+        pillText: "text-sky-700",
+        dot: "bg-sky-500",
+        label: "Needs pharmacist review",
+        accent: "border-l-sky-500",
       };
     default:
       return {
-        bg: "bg-zinc-100",
-        text: "text-zinc-700",
-        dot: "bg-zinc-500",
+        pillBg: "bg-zinc-100",
+        pillText: "text-zinc-700",
+        dot: "bg-zinc-400",
         label: String(decision),
+        accent: "border-l-zinc-300",
       };
   }
 }
 
-function DecisionPill({ decision }: { decision: Decision | string }) {
+function DecisionPill({
+  decision,
+  size = "sm",
+}: {
+  decision: Decision | string;
+  size?: "sm" | "md";
+}) {
   const s = styleFor(decision);
+  const sizing =
+    size === "md"
+      ? "px-3 py-1.5 text-xs"
+      : "px-2.5 py-1 text-[11px]";
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${s.bg} ${s.text}`}
+      className={`inline-flex items-center gap-1.5 rounded-full font-semibold tracking-wide ${sizing} ${s.pillBg} ${s.pillText}`}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
       {s.label}
@@ -98,29 +198,7 @@ function DecisionPill({ decision }: { decision: Decision | string }) {
   );
 }
 
-function MetricCard({
-  title,
-  value,
-  sub,
-}: {
-  title: string;
-  value: string | number;
-  sub?: string;
-}) {
-  return (
-    <div className="rounded-xl border border-divider bg-background p-5 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-        {title}
-      </div>
-      <div className="mt-1 text-3xl font-semibold tabular-nums text-foreground">
-        {value}
-      </div>
-      {sub ? (
-        <div className="mt-1 text-xs text-muted">{sub}</div>
-      ) : null}
-    </div>
-  );
-}
+// ---------- agent state derivation ----------
 
 type AgentDerived = {
   agent_id: string;
@@ -157,11 +235,15 @@ function deriveAgents(events: SentraEvent[]): Record<string, AgentDerived> {
   return out;
 }
 
+// ---------- page ----------
+
 export default function Home() {
   const [events, setEvents] = useState<SentraEvent[]>(SEED_EVENTS);
   const [live, setLive] = useState<boolean>(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [agentFilter, setAgentFilter] = useState<string>("All agents");
+  const [period, setPeriod] = useState<TimePeriod>("today");
+  const [, setTick] = useState(0); // re-render trigger for relTime
 
   useEffect(() => {
     let cancelled = false;
@@ -182,28 +264,34 @@ export default function Home() {
     }
     fetchOnce();
     const id = setInterval(fetchOnce, REFRESH_MS);
+    const tickId = setInterval(() => setTick((n) => n + 1), 15_000);
     return () => {
       cancelled = true;
       clearInterval(id);
+      clearInterval(tickId);
     };
   }, []);
 
   const sortedEvents = useMemo(
-    () =>
-      [...events].sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1)),
+    () => [...events].sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1)),
     [events],
   );
 
+  const periodEvents = useMemo(() => {
+    const cutoff = cutoffMs(period);
+    return sortedEvents.filter((e) => {
+      const dt = new Date(e.timestamp.replace(" ", "T"));
+      return !Number.isNaN(dt.getTime()) && dt.getTime() >= cutoff;
+    });
+  }, [sortedEvents, period]);
+
   const agents = useMemo(() => deriveAgents(events), [events]);
-  const agentIds = useMemo(
-    () => Object.keys(agents).sort(),
-    [agents],
-  );
+  const agentIds = useMemo(() => Object.keys(agents).sort(), [agents]);
 
   const filteredEvents = useMemo(() => {
-    if (agentFilter === "All agents") return sortedEvents;
-    return sortedEvents.filter((e) => e.agent_id === agentFilter);
-  }, [sortedEvents, agentFilter]);
+    if (agentFilter === "All agents") return periodEvents;
+    return periodEvents.filter((e) => e.agent_id === agentFilter);
+  }, [periodEvents, agentFilter]);
 
   const selectedEvent = useMemo(() => {
     if (filteredEvents.length === 0) return null;
@@ -216,9 +304,7 @@ export default function Home() {
     return filteredEvents[0];
   }, [filteredEvents, selectedKey]);
 
-  const selectedAgent = selectedEvent
-    ? agents[selectedEvent.agent_id]
-    : null;
+  const selectedAgent = selectedEvent ? agents[selectedEvent.agent_id] : null;
 
   const activeAgents = Object.values(agents).filter(
     (a) => a.status === "Active",
@@ -226,331 +312,450 @@ export default function Home() {
   const shutdownAgents = Object.values(agents).filter(
     (a) => a.status === "Shut Down",
   ).length;
-  const totalEvents = events.length;
+  const periodTotal = periodEvents.length;
+  const periodBlocked = periodEvents.filter(
+    (e) => e.decision === "Blocked",
+  ).length;
+  const lastEventTs = filteredEvents[0]?.timestamp;
 
   return (
-    <div className="flex min-h-screen flex-col bg-surface">
-      <div className="h-[3px] w-full bg-gradient-to-r from-brand-500 via-brand-600 to-brand-700" />
+    <div className="min-h-screen bg-surface">
+      {/* Brand strip — single thin accent at the very top */}
+      <div className="h-[3px] w-full bg-gradient-to-r from-brand-500 via-emerald-500 to-brand-700" />
 
+      {/* Header */}
       <header className="border-b border-divider bg-background">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-sm">
-              <span className="text-lg font-semibold tracking-tight">S</span>
+        <div className="mx-auto flex max-w-[1400px] items-center justify-between px-8 py-5">
+          <div className="flex items-center gap-3.5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 shadow-[0_4px_12px_-2px_rgba(22,163,74,0.35)]">
+              <span className="text-lg font-bold tracking-tight text-white">
+                S
+              </span>
             </div>
-            <div className="leading-tight">
-              <div className="text-base font-semibold tracking-tight text-foreground">
-                Sentra <span className="text-muted">·</span>{" "}
-                <span className="font-medium text-muted-strong">
-                  Medication Governance
-                </span>
+            <div className="leading-none">
+              <div className="text-[17px] font-semibold tracking-tight text-foreground">
+                Sentra
               </div>
-              <div className="text-[11px] text-muted">
-                Runtime clinical content layer for AI agents · Article-12 audit
-                log · three-strike progressive escalation
+              <div className="mt-1 text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
+                Medication Governance
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span
-              className={`h-2 w-2 rounded-full ${live ? "bg-brand-500 live-dot" : "bg-zinc-300"}`}
-            />
-            <span className="text-xs font-medium text-muted">
-              {live ? "Live · supervisor connected" : "Seed data · supervisor offline"}
-            </span>
+          <div className="flex items-center gap-5">
+            <a
+              href="https://github.com/ksolano220/sentra-medication"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-medium text-muted-strong transition-colors hover:text-foreground"
+            >
+              GitHub
+            </a>
+            <div className="flex items-center gap-2 rounded-full border border-divider bg-surface px-2.5 py-1">
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${live ? "bg-brand-500 live-dot" : "bg-zinc-300"}`}
+              />
+              <span className="text-[11px] font-medium text-muted-strong">
+                {live ? "Live" : "Seed data"}
+              </span>
+            </div>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-6 py-8">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted">
-              Agent filter
-            </label>
-            <select
-              value={agentFilter}
-              onChange={(e) => setAgentFilter(e.target.value)}
-              className="mt-1 rounded-lg border border-divider bg-background px-3 py-1.5 text-sm font-medium text-foreground focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200"
+      <main className="mx-auto w-full max-w-[1400px] px-8 pb-20 pt-10">
+        {/* Hero / context */}
+        <section className="mb-10">
+          <h1 className="text-[28px] font-semibold leading-tight tracking-tight text-foreground">
+            Sentra catches medication errors before they reach the pharmacy.
+          </h1>
+          <p className="mt-2 max-w-2xl text-[15px] leading-relaxed text-muted-strong">
+            Every prescription proposed by an AI assistant is checked against
+            patient allergies, dosing rules, and known clinical hazards. Unsafe
+            ones are stopped before they're filled.
+          </p>
+        </section>
+
+        {/* Time period tabs */}
+        <div className="mb-6 inline-flex rounded-xl border border-divider bg-background p-1 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+          {PERIOD_OPTIONS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => setPeriod(p.id)}
+              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
+                period === p.id
+                  ? "bg-brand-50 text-brand-700"
+                  : "text-muted hover:text-foreground"
+              }`}
             >
-              <option>All agents</option>
-              {agentIds.map((id) => (
-                <option key={id} value={id}>
-                  {id}
-                </option>
-              ))}
-            </select>
-          </div>
+              {p.label}
+            </button>
+          ))}
         </div>
 
-        <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Metrics */}
+        <div className="mb-12 grid grid-cols-2 gap-4 lg:grid-cols-4">
           <MetricCard
-            title="Total events"
-            value={totalEvents}
-            sub="Live event stream"
+            label="Prescriptions reviewed"
+            value={periodTotal}
+            hint={
+              period === "today"
+                ? "in the last 24 hours"
+                : period === "7d"
+                  ? "in the last 7 days"
+                  : "in the last 30 days"
+            }
           />
           <MetricCard
-            title="Active agents"
-            value={activeAgents}
-            sub="Agents still operating"
+            label="Caught before pharmacy"
+            value={periodBlocked}
+            hint="patients protected"
+            accent={periodBlocked > 0 ? "rose" : "neutral"}
           />
           <MetricCard
-            title="Shut-down agents"
+            label="AI assistants offline"
             value={shutdownAgents}
-            sub="Terminal enforcement state"
+            hint={`${activeAgents} still working`}
+            accent={shutdownAgents > 0 ? "rose" : "neutral"}
           />
           <MetricCard
-            title={
-              agentFilter === "All agents"
-                ? "Agents monitored"
-                : "Selected agent"
-            }
-            value={
-              agentFilter === "All agents"
-                ? agentIds.length
-                : agents[agentFilter]?.status === "Shut Down"
-                  ? "Shut down"
-                  : "Active"
-            }
-            sub={
-              agentFilter === "All agents"
-                ? `${shutdownAgents} in terminal state`
-                : `${agents[agentFilter]?.blocked_attempts ?? 0} blocked attempts · risk ${agents[agentFilter]?.cumulative_risk ?? 0}/100`
-            }
+            label="Last activity"
+            value={lastEventTs ? relTime(lastEventTs) : "—"}
+            hint={lastEventTs ? fmtTime(lastEventTs) : "no prescriptions yet"}
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.6fr_1fr]">
-          <section className="rounded-xl border border-divider bg-background shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-            <div className="grid grid-cols-[110px_1.4fr_2fr_1.3fr_90px_140px] items-center gap-4 border-b border-divider px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted">
-              <div>Time</div>
-              <div>Agent</div>
-              <div>Action</div>
-              <div>Threat</div>
-              <div className="text-right">Risk</div>
-              <div>Decision</div>
+        {/* Section header for the live stream */}
+        <div className="mb-4 flex items-end justify-between">
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+              Recent prescriptions
             </div>
-            <ul className="divide-y divide-divider-soft">
-              {filteredEvents.slice(0, 50).map((e, i) => {
+            <h2 className="mt-1 text-lg font-semibold tracking-tight text-foreground">
+              {agentFilter === "All agents"
+                ? "All AI assistants"
+                : agentDisplay(agentFilter)}
+              <span className="ml-2 text-sm font-medium text-muted">
+                · {filteredEvents.length}{" "}
+                {filteredEvents.length === 1 ? "prescription" : "prescriptions"}
+              </span>
+            </h2>
+          </div>
+          <select
+            value={agentFilter}
+            onChange={(e) => setAgentFilter(e.target.value)}
+            className="h-9 rounded-lg border border-divider bg-background px-3 text-sm font-medium text-foreground transition-colors focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-100"
+          >
+            <option value="All agents">All AI assistants</option>
+            {agentIds.map((id) => (
+              <option key={id} value={id}>
+                {agentDisplay(id)}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Main grid: events + inspector */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+          {/* Prescription card feed */}
+          <section className="space-y-3">
+            {filteredEvents.length === 0 ? (
+              <div className="rounded-2xl border border-divider bg-background px-6 py-16 text-center">
+                <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-brand-50">
+                  <span className="h-2 w-2 rounded-full bg-brand-500" />
+                </div>
+                <div className="text-sm font-medium text-foreground">
+                  No prescriptions yet
+                </div>
+                <div className="mt-1 text-xs text-muted">
+                  Run{" "}
+                  <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-[11px] text-muted-strong">
+                    python demo/methotrexate_scenario.py
+                  </code>{" "}
+                  to populate the stream
+                </div>
+              </div>
+            ) : (
+              filteredEvents.slice(0, 50).map((e, i) => {
                 const key = rowKey(e, i);
-                const isSelected =
-                  selectedEvent && rowKey(selectedEvent, i) === key;
+                const isSelected = selectedKey === key;
+                const s = styleFor(e.decision);
+                const drugLabel = titleize(e.drug) || "Medication";
+                const meta = [e.dose, e.frequency].filter(Boolean).join(" · ");
                 return (
-                  <li key={key}>
-                    <button
-                      onClick={() => setSelectedKey(key)}
-                      className={`grid w-full grid-cols-[110px_1.4fr_2fr_1.3fr_90px_140px] items-center gap-4 px-5 py-3 text-left text-sm transition-colors hover:bg-brand-50 ${isSelected ? "bg-brand-50" : ""}`}
-                    >
-                      <div className="font-mono text-xs tabular-nums text-muted">
-                        {fmtTime(e.timestamp)}
+                  <button
+                    key={key}
+                    onClick={() => setSelectedKey(key)}
+                    className={`block w-full rounded-2xl border border-divider bg-background px-6 py-5 text-left transition-all hover:-translate-y-px hover:shadow-[0_2px_10px_rgba(0,0,0,0.05)] ${
+                      isSelected
+                        ? `border-l-[3px] ${s.accent} shadow-[0_4px_16px_rgba(0,0,0,0.06)]`
+                        : ""
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <DecisionPill decision={e.decision} />
+                      <div className="text-[12px] text-muted">
+                        {relTime(e.timestamp)}
                       </div>
-                      <div className="truncate font-mono text-xs text-foreground">
-                        {e.agent_id}
+                    </div>
+
+                    <div className="mt-5">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                        AI assistant proposed
                       </div>
-                      <div className="truncate text-foreground">
-                        {e.action_label || e.action_type}
+                      <div className="mt-1.5 text-[22px] font-semibold leading-tight tracking-tight text-foreground">
+                        {drugLabel}
+                        {meta ? (
+                          <span className="ml-2 text-[16px] font-medium text-muted-strong">
+                            {meta}
+                          </span>
+                        ) : null}
                       </div>
-                      <div className="truncate text-muted">
-                        {e.threat_type || "—"}
+                      <div className="mt-2 text-[14px]">
+                        <span className="text-muted">for </span>
+                        <span className="font-medium text-foreground">
+                          {patientDisplay(e.patient_id)}
+                        </span>
+                        <span className="text-muted"> · proposed by </span>
+                        <span className="font-medium text-foreground">
+                          {agentDisplay(e.agent_id)}
+                        </span>
                       </div>
-                      <div className="text-right font-mono tabular-nums text-foreground">
-                        {e.attempted_risk}
+                    </div>
+
+                    <div className="mt-4 rounded-xl bg-surface px-4 py-3">
+                      <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                        {e.decision === "Allowed"
+                          ? "Why it was safe"
+                          : e.decision === "Agent Shut Down"
+                            ? "What happened"
+                            : "Why we caught it"}
                       </div>
-                      <div>
-                        <DecisionPill decision={e.decision} />
-                      </div>
-                    </button>
-                  </li>
+                      <p className="text-[14px] leading-relaxed text-foreground">
+                        {humanReason(e)}
+                      </p>
+                    </div>
+                  </button>
                 );
-              })}
-              {filteredEvents.length === 0 ? (
-                <li className="px-5 py-10 text-center text-sm text-muted">
-                  No events for this agent.
-                </li>
-              ) : null}
-            </ul>
+              })
+            )}
           </section>
 
-          <aside className="rounded-xl border border-divider bg-background p-6 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-sm font-semibold tracking-tight text-foreground">
-                Decision detail
-              </h2>
-              {selectedEvent ? (
-                <DecisionPill decision={selectedEvent.decision} />
-              ) : null}
-            </div>
-
+          {/* Inspector */}
+          <aside className="sticky top-6 self-start rounded-2xl border border-divider bg-background shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
             {!selectedEvent ? (
-              <p className="text-sm text-muted">No events to inspect.</p>
-            ) : (
-              <div className="space-y-5">
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-                    Agent state
-                  </div>
-                  <div className="mt-2 grid grid-cols-2 gap-3">
-                    <div className="rounded-lg border border-divider-soft bg-surface p-3">
-                      <div className="text-[10px] uppercase tracking-wider text-muted">
-                        Agent
-                      </div>
-                      <div className="mt-0.5 truncate font-mono text-xs text-foreground">
-                        {selectedAgent?.agent_id}
-                      </div>
-                    </div>
-                    <div className="rounded-lg border border-divider-soft bg-surface p-3">
-                      <div className="text-[10px] uppercase tracking-wider text-muted">
-                        Status
-                      </div>
-                      <div
-                        className={`mt-0.5 text-sm font-semibold ${selectedAgent?.status === "Shut Down" ? "text-red-700" : "text-brand-700"}`}
-                      >
-                        {selectedAgent?.status}
-                      </div>
-                    </div>
-                    <div className="rounded-lg border border-divider-soft bg-surface p-3">
-                      <div className="text-[10px] uppercase tracking-wider text-muted">
-                        Cumulative risk
-                      </div>
-                      <div className="mt-0.5 font-mono text-sm tabular-nums text-foreground">
-                        {selectedAgent?.cumulative_risk ?? 0}/100
-                      </div>
-                    </div>
-                    <div className="rounded-lg border border-divider-soft bg-surface p-3">
-                      <div className="text-[10px] uppercase tracking-wider text-muted">
-                        Blocked attempts
-                      </div>
-                      <div className="mt-0.5 font-mono text-sm tabular-nums text-foreground">
-                        {selectedAgent?.blocked_attempts ?? 0}
-                      </div>
-                    </div>
-                  </div>
+              <div className="px-6 py-16 text-center">
+                <div className="text-sm font-medium text-foreground">
+                  Nothing to inspect
                 </div>
-
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-                    Action
+                <div className="mt-1 text-xs text-muted">
+                  Click any prescription to drill into its audit record.
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Inspector header */}
+                <div className="border-b border-divider px-6 py-5">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                    Decision
                   </div>
-                  <div className="mt-1 text-sm text-foreground">
+                  <div className="mt-2.5 flex items-center justify-between gap-3">
+                    <DecisionPill decision={selectedEvent.decision} size="md" />
+                    <span className="font-mono text-[11px] tabular-nums text-muted">
+                      {fmtTime(selectedEvent.timestamp)}
+                    </span>
+                  </div>
+                  <div className="mt-3 text-[15px] font-semibold leading-snug tracking-tight text-foreground">
                     {selectedEvent.action_label || selectedEvent.action_type}
                   </div>
                 </div>
 
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-                    Policy triggered
+                {/* Agent state */}
+                <div className="border-b border-divider px-6 py-5">
+                  <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                    Agent
                   </div>
-                  <div className="mt-1 font-mono text-xs text-foreground">
-                    {selectedEvent.policy_triggered}
+                  <div className="mb-3 truncate text-[13px] font-medium text-foreground">
+                    {selectedAgent ? agentDisplay(selectedAgent.agent_id) : "—"}
                   </div>
-                  <p className="mt-1.5 text-sm text-muted-strong">
-                    {selectedEvent.policy_description}
-                  </p>
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider text-muted">
+                        Status
+                      </div>
+                      <div
+                        className={`mt-1 text-[13px] font-semibold ${
+                          selectedAgent?.status === "Shut Down"
+                            ? "text-rose-700"
+                            : "text-brand-700"
+                        }`}
+                      >
+                        {selectedAgent?.status}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider text-muted">
+                        Risk
+                      </div>
+                      <div className="mt-1 font-mono text-[13px] font-semibold tabular-nums text-foreground">
+                        {selectedAgent?.cumulative_risk ?? 0}
+                        <span className="text-muted">/100</span>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider text-muted">
+                        Strikes
+                      </div>
+                      <div className="mt-1 font-mono text-[13px] font-semibold tabular-nums text-foreground">
+                        {selectedAgent?.blocked_attempts ?? 0}
+                        <span className="text-muted">/3</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                {/* Reason */}
+                <div className="border-b border-divider px-6 py-5">
+                  <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
                     Reason
                   </div>
-                  <p className="mt-1 text-sm text-foreground">
+                  <p className="text-sm leading-relaxed text-foreground">
                     {selectedEvent.reason}
                   </p>
                 </div>
 
-                {selectedEvent.citation ? (
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-                      Citation
-                    </div>
-                    <p className="mt-1 text-sm text-muted-strong">
-                      {selectedEvent.citation}
-                    </p>
+                {/* Policy + citation */}
+                <div className="border-b border-divider px-6 py-5">
+                  <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                    Policy
                   </div>
-                ) : null}
-
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-                    Audit fingerprint
+                  <div className="font-mono text-[11px] text-foreground">
+                    {selectedEvent.policy_triggered}
                   </div>
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
-                    <div>
-                      <div className="text-muted">Rule</div>
-                      <div className="truncate font-mono text-foreground">
-                        {selectedEvent.rule_id || "—"}
-                        {selectedEvent.rule_version
-                          ? ` · v${selectedEvent.rule_version}`
-                          : ""}
+                  <p className="mt-2 text-[13px] leading-relaxed text-muted-strong">
+                    {selectedEvent.policy_description}
+                  </p>
+                  {selectedEvent.citation ? (
+                    <div className="mt-3 rounded-lg border-l-2 border-brand-500 bg-brand-50/50 px-3 py-2.5">
+                      <div className="text-[10px] font-semibold uppercase tracking-wider text-brand-700">
+                        Citation
                       </div>
+                      <p className="mt-1 text-[12px] leading-relaxed text-foreground">
+                        {selectedEvent.citation}
+                      </p>
                     </div>
-                    <div>
-                      <div className="text-muted">Policy hash</div>
-                      <div className="truncate font-mono text-foreground">
-                        {selectedEvent.policy_hash || "—"}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-muted">Inputs SHA-256</div>
-                      <div className="truncate font-mono text-foreground">
-                        {selectedEvent.inputs_sha256 || "—"}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-muted">Timestamp</div>
-                      <div className="truncate font-mono text-foreground">
-                        {selectedEvent.timestamp}
-                      </div>
-                    </div>
-                  </div>
+                  ) : null}
                 </div>
 
+                {/* Audit fingerprint */}
+                <div className="border-b border-divider px-6 py-5">
+                  <div className="mb-3 flex items-center gap-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                      Audit fingerprint
+                    </div>
+                    <div className="text-[9px] font-semibold uppercase tracking-wider text-brand-700">
+                      Article 12
+                    </div>
+                  </div>
+                  <dl className="space-y-2.5 text-[11px]">
+                    <FpRow label="Rule">
+                      {selectedEvent.rule_id || "—"}
+                      {selectedEvent.rule_version
+                        ? `  v${selectedEvent.rule_version}`
+                        : ""}
+                    </FpRow>
+                    <FpRow label="Policy hash">
+                      {selectedEvent.policy_hash || "—"}
+                    </FpRow>
+                    <FpRow label="Inputs SHA-256">
+                      {selectedEvent.inputs_sha256 || "—"}
+                    </FpRow>
+                    <FpRow label="Timestamp">
+                      {selectedEvent.timestamp}
+                    </FpRow>
+                  </dl>
+                </div>
+
+                {/* Event trace */}
                 {selectedEvent.event_trace &&
                 selectedEvent.event_trace.length > 0 ? (
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                  <div className="px-6 py-5">
+                    <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
                       Event trace
                     </div>
-                    <ul className="mt-2 space-y-1 text-sm text-muted-strong">
+                    <ol className="space-y-1.5 text-[12px] text-muted-strong">
                       {selectedEvent.event_trace.slice(-6).map((line, i) => (
-                        <li key={i} className="flex gap-2">
+                        <li key={i} className="flex gap-2.5">
                           <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-zinc-300" />
-                          <span>{line}</span>
+                          <span className="leading-relaxed">{line}</span>
                         </li>
                       ))}
-                    </ul>
+                    </ol>
                   </div>
                 ) : null}
-              </div>
+              </>
             )}
           </aside>
         </div>
       </main>
 
       <footer className="border-t border-divider bg-background">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 text-[11px] text-muted">
+        <div className="mx-auto flex max-w-[1400px] flex-col items-start justify-between gap-2 px-8 py-6 text-[11px] text-muted sm:flex-row sm:items-center">
           <div>
-            NYU SPS Berlin GFI 2026 · Group 3 ·{" "}
-            <a
-              href="https://github.com/ksolano220/sentra-medication"
-              className="font-medium text-muted-strong hover:text-foreground"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              github.com/ksolano220/sentra-medication
-            </a>
+            NYU SPS Berlin GFI 2026 · Group 3 · clinical content layer for
+            runtime AI governance in medication workflows
           </div>
-          <div>
-            Clinical content layer on top of the{" "}
-            <a
-              href="https://github.com/microsoft/agent-governance-toolkit"
-              className="font-medium text-muted-strong hover:text-foreground"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Microsoft Agent Governance Toolkit
-            </a>
+          <div className="font-mono text-[10px] tabular-nums text-muted">
+            v0.1.0 · {live ? "live" : "offline"} · refresh {REFRESH_MS / 1000}s
           </div>
         </div>
       </footer>
+    </div>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  hint,
+  accent = "neutral",
+}: {
+  label: string;
+  value: string | number;
+  hint?: string;
+  accent?: "neutral" | "rose";
+}) {
+  const accentClass =
+    accent === "rose"
+      ? "border-rose-100 bg-rose-50/40"
+      : "border-divider bg-background";
+  return (
+    <div
+      className={`rounded-2xl border ${accentClass} px-5 py-4 transition-colors hover:bg-surface/40`}
+    >
+      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+        {label}
+      </div>
+      <div className="mt-2 text-[28px] font-semibold leading-none tracking-tight tabular-nums text-foreground">
+        {value}
+      </div>
+      {hint ? (
+        <div className="mt-2 text-[11px] text-muted">{hint}</div>
+      ) : null}
+    </div>
+  );
+}
+
+function FpRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-[110px_1fr] items-baseline gap-3">
+      <dt className="text-muted">{label}</dt>
+      <dd className="truncate font-mono text-foreground">{children}</dd>
     </div>
   );
 }
