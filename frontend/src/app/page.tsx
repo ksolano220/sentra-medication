@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Decision, SentraEvent } from "@/lib/types";
-import { SEED_EVENTS } from "@/lib/seedEvents";
+import { SEED_EVENTS, freshSeedEvents } from "@/lib/seedEvents";
+import { evaluatePrescription, type Prescription } from "@/lib/engine";
 
 const SUPERVISOR_URL =
   process.env.NEXT_PUBLIC_SENTRA_URL || "http://127.0.0.1:8000";
@@ -75,7 +76,80 @@ const AGENT_NAMES: Record<string, string> = {
   "clinical-ai-demo-001": "Clinical AI Assistant",
   "healthcare-agent-svc-002": "Pharmacy AI",
   "maf-clinical-pilot-003": "Clinical Pilot",
+  "clinical-ai-live": "Clinical AI (demo)",
 };
+
+// ---------- interactive demo ----------
+
+// The agent the visitor drives from the "Try it" panel. Kept separate from the
+// seeded agents so its three-strike state starts fresh on each visit.
+const DEMO_AGENT_ID = "clinical-ai-live";
+
+type Scenario = {
+  id: string;
+  tag: string;
+  tone: "danger" | "warn" | "safe";
+  title: string;
+  sub: string;
+  rx: Omit<Prescription, "agent_id">;
+};
+
+const SCENARIOS: Scenario[] = [
+  {
+    id: "mtx",
+    tag: "Dangerous dose",
+    tone: "danger",
+    title: "Methotrexate 25mg daily",
+    sub: "for Jane Doe",
+    rx: {
+      drug: "methotrexate",
+      dose: "25mg",
+      frequency: "daily",
+      patient_id: "P-2026-001",
+    },
+  },
+  {
+    id: "amox",
+    tag: "Allergy conflict",
+    tone: "warn",
+    title: "Amoxicillin 500mg",
+    sub: "for John Smith · penicillin allergy",
+    rx: {
+      drug: "amoxicillin",
+      dose: "500mg",
+      frequency: "every 8 hours",
+      patient_id: "P-2026-002",
+    },
+  },
+  {
+    id: "lisinopril",
+    tag: "Safe",
+    tone: "safe",
+    title: "Lisinopril 10mg daily",
+    sub: "for Jane Doe",
+    rx: {
+      drug: "lisinopril",
+      dose: "10mg",
+      frequency: "daily",
+      patient_id: "P-2026-001",
+    },
+  },
+];
+
+function scenarioTagClass(tone: Scenario["tone"]): string {
+  if (tone === "danger") return "bg-rose-50 text-rose-700";
+  if (tone === "warn") return "bg-amber-50 text-amber-700";
+  return "bg-emerald-50 text-emerald-700";
+}
+
+function nowStamp(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  );
+}
 
 function patientDisplay(patientId: string | undefined): string {
   if (!patientId) return "the patient";
@@ -243,10 +317,14 @@ export default function Home() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [agentFilter, setAgentFilter] = useState<string>("All agents");
   const [period, setPeriod] = useState<TimePeriod>("today");
+  const [lastVerdict, setLastVerdict] = useState<SentraEvent | null>(null);
   const [, setTick] = useState(0); // re-render trigger for relTime
 
   useEffect(() => {
     let cancelled = false;
+    // Seed timestamps are fixed in the past; rebase them to now (client-side)
+    // so the default "Today" view isn't empty when there's no live supervisor.
+    setEvents(freshSeedEvents());
     async function fetchOnce() {
       try {
         const res = await fetch(`${SUPERVISOR_URL}/events`, {
@@ -318,6 +396,29 @@ export default function Home() {
   ).length;
   const lastEventTs = filteredEvents[0]?.timestamp;
 
+  function runScenario(rx: Omit<Prescription, "agent_id">) {
+    const a = agents[DEMO_AGENT_ID];
+    const event = evaluatePrescription(
+      { ...rx, agent_id: DEMO_AGENT_ID },
+      {
+        status: a?.status ?? "Active",
+        blocked_attempts: a?.blocked_attempts ?? 0,
+      },
+      nowStamp(),
+    );
+    setEvents((prev) => [event, ...prev]);
+    setLastVerdict(event);
+    setPeriod("today");
+    setAgentFilter("All agents");
+    setSelectedKey(rowKey(event, 0));
+  }
+
+  function resetDemo() {
+    setEvents(freshSeedEvents());
+    setLastVerdict(null);
+    setSelectedKey(null);
+  }
+
   return (
     <div className="min-h-screen bg-surface">
       {/* Brand strip — single thin accent at the very top */}
@@ -373,6 +474,65 @@ export default function Home() {
             patient allergies, dosing rules, and known clinical hazards. Unsafe
             ones are stopped before they're filled.
           </p>
+        </section>
+
+        {/* Interactive demo */}
+        <section className="mb-12 rounded-2xl border border-divider bg-background p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-700">
+                Try it live
+              </div>
+              <h2 className="mt-1 text-lg font-semibold tracking-tight text-foreground">
+                Submit a prescription and watch Sentra decide.
+              </h2>
+              <p className="mt-1.5 max-w-2xl text-[13px] leading-relaxed text-muted-strong">
+                Each one is checked against patient allergies, dosing rules, and
+                clinical hazards. Submit an unsafe prescription three times and
+                the assistant gets shut down. Runs in your browser, no backend.
+              </p>
+            </div>
+            <button
+              onClick={resetDemo}
+              className="h-8 shrink-0 rounded-lg border border-divider px-3 text-xs font-medium text-muted-strong transition-colors hover:bg-surface hover:text-foreground"
+            >
+              Reset demo
+            </button>
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {SCENARIOS.map((sc) => (
+              <button
+                key={sc.id}
+                onClick={() => runScenario(sc.rx)}
+                className="group rounded-xl border border-divider bg-surface px-4 py-3.5 text-left transition-all hover:-translate-y-px hover:border-brand-300 hover:shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
+              >
+                <span
+                  className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${scenarioTagClass(sc.tone)}`}
+                >
+                  {sc.tag}
+                </span>
+                <div className="mt-2 text-[15px] font-semibold tracking-tight text-foreground">
+                  {sc.title}
+                </div>
+                <div className="mt-0.5 text-[12px] text-muted">{sc.sub}</div>
+                <div className="mt-2.5 text-[12px] font-medium text-brand-700 opacity-0 transition-opacity group-hover:opacity-100">
+                  Submit to Sentra →
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {lastVerdict ? (
+            <div className="mt-5 flex items-start gap-3 rounded-xl bg-surface px-4 py-3.5">
+              <div className="shrink-0">
+                <DecisionPill decision={lastVerdict.decision} size="md" />
+              </div>
+              <p className="text-[13px] leading-relaxed text-foreground">
+                {humanReason(lastVerdict)}
+              </p>
+            </div>
+          ) : null}
         </section>
 
         {/* Time period tabs */}
@@ -464,14 +624,11 @@ export default function Home() {
                   <span className="h-2 w-2 rounded-full bg-brand-500" />
                 </div>
                 <div className="text-sm font-medium text-foreground">
-                  No prescriptions yet
+                  No prescriptions in this window
                 </div>
                 <div className="mt-1 text-xs text-muted">
-                  Run{" "}
-                  <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-[11px] text-muted-strong">
-                    python demo/methotrexate_scenario.py
-                  </code>{" "}
-                  to populate the stream
+                  Submit one from the panel above, or widen the range to 7 or 30
+                  days.
                 </div>
               </div>
             ) : (

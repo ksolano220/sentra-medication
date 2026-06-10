@@ -304,3 +304,26 @@ export const SEED_EVENTS: SentraEvent[] = [
       "ECRI 2025-2026 Top 10 Health Tech Hazards; EU AI Act Article 14(4)(d).",
   },
 ];
+
+// The seed timestamps above are fixed in the past, so the dashboard's default
+// "Today" filter would hide all of them and render empty. This shifts every
+// seed event forward so the newest lands at the current time, preserving the
+// relative spacing (the Today / 7 days / 30 days tabs still segment). Call it
+// client-side (it reads the current time) when there's no live supervisor.
+export function freshSeedEvents(): SentraEvent[] {
+  const parse = (ts: string) => new Date(ts.replace(" ", "T")).getTime();
+  const newest = Math.max(...SEED_EVENTS.map((e) => parse(e.timestamp)));
+  const shift = Date.now() - newest;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const fmt = (ms: number) => {
+    const d = new Date(ms);
+    return (
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+      `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+    );
+  };
+  return SEED_EVENTS.map((e) => ({
+    ...e,
+    timestamp: fmt(parse(e.timestamp) + shift),
+  }));
+}
