@@ -4,7 +4,7 @@
 
 Sentra is middleware that sits between an AI prescription system and execution. It intercepts every AI-generated medication order, validates it against live patient data fetched from the Electronic Patient Record (EPR) via FHIR R4, and returns **allow / block / escalate** in under 100 milliseconds, before the order ever reaches the pharmacy.
 
-NYU SPS Berlin GFI 2026 · Group 3. Presented to **Google** and **Join Capital**; the final pitch was with the professor. **Won the pitch competition.** Adapted from [ksolano220/sentra](https://github.com/ksolano220/sentra).
+NYU SPS Berlin GFI 2026 · Group 3. Presented to **Google** and **Join Capital**, and **won the final pitch** before a faculty panel. Adapted from [ksolano220/sentra](https://github.com/ksolano220/sentra).
 
 → Full business case: [docs/business-case.md](docs/business-case.md) · Pitch + Q&A: [docs/pitch-script.md](docs/pitch-script.md)
 
@@ -163,7 +163,7 @@ MDR + AI Act apply concurrently to the agents Sentra gates. Hospital deployers s
 
 ## Context
 
-NYU SPS Berlin GFI 2026 group project, Group 3 (see [Team](#team)). Presented to Google and Join Capital; the final pitch was delivered to the professor. Won the pitch competition.
+NYU SPS Berlin GFI 2026 group project, Group 3 (see [Team](#team)). Presented to Google and Join Capital; won the final pitch before a faculty panel.
 
 Pitch and design artifacts live in `docs/`:
 
