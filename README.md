@@ -1,39 +1,40 @@
 # Sentra Medication
 
-**Clinical content layer for runtime AI governance in medication management workflows.**
+**Independent runtime governance for AI-assisted medication management.**
 
-NYU SPS Berlin GFI 2026 · Group 3 · adaptation of [ksolano220/sentra](https://github.com/ksolano220/sentra).
+Sentra is middleware that sits between an AI prescription system and execution. It intercepts every AI-generated medication order, validates it against live patient data fetched from the Electronic Patient Record (EPR) via FHIR R4, and returns **allow / block / escalate** in under 100 milliseconds, before the order ever reaches the pharmacy.
+
+NYU SPS Berlin GFI 2026 · Group 3 (Fizza, Kat, Jovan, Karla). Presented to **Google** and **Join Capital**; the final pitch was with the professor. **Won the pitch competition.** Adapted from [ksolano220/sentra](https://github.com/ksolano220/sentra).
+
+→ Full business case: [docs/business-case.md](docs/business-case.md) · Pitch + Q&A: [docs/pitch-script.md](docs/pitch-script.md)
 
 ---
 
 ## What this is
 
-Microsoft open-sourced the [Agent Governance Toolkit](https://github.com/microsoft/agent-governance-toolkit) on April 2, 2026: sub-millisecond pre-execution action interception, OPA Rego + Cedar + YAML policies, EU AI Act + HIPAA mapping. That is the generic plumbing for runtime AI governance.
+Hospitals are handing prescription decisions to AI systems with no real-time governance layer watching over them, exactly as the EU AI Act makes human oversight of high-risk healthcare AI mandatory (effective August 2, 2026; penalties up to €15M or 3% of global turnover). Current governance is reactive: static policies, manual reviews, post-incident analysis. Nothing in the stack intercepts an unsafe AI action *before* it reaches the pharmacy, and traditional cybersecurity protects users, devices, and networks but does not monitor AI decisions in real time.
 
-Sentra Medication is not a competing plumbing layer. It is the **clinical content layer** that sits on top of (or alongside) that plumbing. The toolkit ships interception. Sentra ships the medication rule pack, the Article-12-shaped clinical audit format, and the medication-aware progressive escalation behavior.
+Sentra is that missing layer. It is **independent by design**: it does not sit inside the AI tool, because an AI system governing its own outputs is grading its own homework. It sits between the AI and execution, validates against the patient's actual EPR record (not the model's internal logic), and produces an audit log that doubles as legal evidence of human oversight. The independence also creates clean liability separation between the AI vendor, Sentra, and the hospital.
 
-| | Microsoft Agent Governance Toolkit | Sentra Medication |
-|---|---|---|
-| Layer | Generic plumbing | Clinical content + behavior |
-| Policy expression | YAML, OPA Rego, Cedar | Clinical rule pack (frequency mismatch, allergy conflict, dose range, drug-drug, formulary) |
-| Audit log | Hash-chained policy events with OpenTelemetry spans | Article-12-shaped audit row with statutory citation per event |
-| Behavioral state | Stateless by design | Cumulative per-agent risk + three-strike progressive escalation (silent log → pharmacist co-sign → agent suspension) |
-| Clinical domain knowledge | None (by design) | Fachinformationen, AkdÄ guidance, ECRI canonical failure modes |
-| Who builds it | Microsoft | Hospital deployers + clinical partners |
+Five functions:
 
-**Microsoft solved interception. Sentra solved the clinic.**
+- **Real-time interception** — every AI medication order is caught before it executes or transmits downstream.
+- **Live EPR validation** — checked against live patient data via FHIR R4, not stale or cached records.
+- **Behavioral risk scoring** — cumulative per-agent risk across actions, not order-by-order.
+- **Runtime intervention** — allow / block / escalate; escalations are risk-scored to fight alert fatigue and halt until a clinician explicitly signs off.
+- **Auditability** — every action, block, escalation, and override logged, timestamped, and traceable, as EU AI Act human-oversight evidence.
 
 ---
 
 ## Project status
 
-**This is an academic sprint repo for the NYU SPS Berlin GFI 2026 fellowship.** Read [docs/berlin-sprint-plan.md](docs/berlin-sprint-plan.md) and [docs/microsoft-toolkit-comparison.md](docs/microsoft-toolkit-comparison.md) before contributing.
+Academic sprint repo for the NYU SPS Berlin GFI 2026 fellowship. Working MVP, open-sourced.
 
 ### Built and working
 
 - Deterministic policy rules engine ([`supervisor/rules.py`](supervisor/rules.py))
 - Cumulative per-agent risk + three-strike progressive escalation ([`supervisor/risk.py`](supervisor/risk.py))
-- Article-12-shaped audit log with `rule_id`, `rule_version`, `policy_hash`, `inputs_sha256`, statutory `citation` per event ([`supervisor/storage.py`](supervisor/storage.py))
+- EU AI Act Article-12-shaped audit log with `rule_id`, `rule_version`, `policy_hash`, `inputs_sha256`, statutory `citation` per event ([`supervisor/storage.py`](supervisor/storage.py))
 - Mock FHIR `/fhir/Patient/{id}` endpoint with canned demo patients ([`supervisor/mock_fhir.py`](supervisor/mock_fhir.py))
 - Python SDK with `evaluate()` + `@guard` decorator + medication-aware payload fields ([`sdk/client.py`](sdk/client.py))
 - Streamlit monitoring dashboard, light mode + green accent ([`dashboard/app.py`](dashboard/app.py))
@@ -46,11 +47,12 @@ Sentra Medication is not a competing plumbing layer. It is the **clinical conten
 
 ### Roadmap (clearly labelled, NOT built)
 
-- Native middleware integration with the Microsoft Agent Governance Toolkit (sidecar webhook pattern, see [docs/microsoft-toolkit-comparison.md](docs/microsoft-toolkit-comparison.md))
-- Azure Health Data Services integration via FHIR R4
-- Microsoft Purview AI Hub audit export
-- Azure Marketplace transactable offer via ISV Success
-- Upstream PR contributing a `clinical-medication-governed` example to the MS toolkit
+- **Patient identity verification** — wrong-patient order detection
+- **Drug-drug interaction checks**
+- **EPR consistency validation** — stale / conflicting record detection
+- **Live FHIR R4 integration with production EPRs** (Epic, Oracle Health, CompuGroup Medical) via SMART on FHIR + OAuth 2.0
+- **Epic Marketplace certification** — FHIR R4 + SMART on FHIR compliance, OAuth 2.0 security validation, sandbox testing
+- **EU AI Act conformity assessment** via an accredited EU Notified Body (e.g., TÜV SÜD)
 - **Agent State Continuity** (quality-scored checkpoint/restore on drift): extension of the three-strike pattern that snapshots agent context at the last good point and restores onto a fresh agent so handoff continuity is preserved without bad-state contamination
 
 ---
@@ -98,9 +100,9 @@ agent  →  Sentra SDK  →  supervisor/main.py  →  rules.py  →  risk.py
 
 - [`supervisor/main.py`](supervisor/main.py): FastAPI server. `/agent-action` evaluates a proposed action. `/fhir/Patient/{id}` serves the mock EPR data the agent fetches before proposing. `/events` returns the audit log. `/reset` clears state for demos.
 - [`supervisor/rules.py`](supervisor/rules.py): the Python rule chain. Add clinical rules here. Each rule emits a `_build_result` carrying decision + policy_triggered + reason + citation + Article-12 audit fields.
-- [`supervisor/risk.py`](supervisor/risk.py): cumulative-risk math + three-strike shutdown. **This is the behavioral primitive Microsoft's stateless kernel does not ship.**
+- [`supervisor/risk.py`](supervisor/risk.py): cumulative-risk math + three-strike shutdown. This is the behavioral primitive a stateless policy kernel does not ship.
 - [`supervisor/storage.py`](supervisor/storage.py): JSON event log + per-agent state.
-- [`supervisor/mock_fhir.py`](supervisor/mock_fhir.py): simulated EPR endpoint. In production this would be Azure Health Data Services (FHIR R4) or the hospital's actual EPR.
+- [`supervisor/mock_fhir.py`](supervisor/mock_fhir.py): simulated EPR endpoint. In production this is the hospital's EPR via FHIR R4 (Epic, Oracle Health, CompuGroup Medical).
 - [`sdk/client.py`](sdk/client.py): drop-in Python SDK. Fail-safe blocks on unreachable server.
 - [`dashboard/app.py`](dashboard/app.py): Streamlit dashboard. Reads the event log, surfaces live intercepts with the audit row inspector.
 
@@ -152,23 +154,22 @@ MDR + AI Act apply concurrently to the agents Sentra gates. Hospital deployers s
 
 ## Context
 
-NYU SPS Berlin GFI 2026 group project, Group 3. Built to be presented to Microsoft Berlin during the fellowship week. The pitch positions Sentra as a clinical-domain partner offering that plugs into the Microsoft Agent Governance Toolkit for the medication vertical.
+NYU SPS Berlin GFI 2026 group project, Group 3 (Fizza, Kat, Jovan, Karla). Presented to Google and Join Capital; the final pitch was delivered to the professor. Won the pitch competition.
 
-Pitch artifacts live in `docs/`:
+Pitch and design artifacts live in `docs/`:
 
-- [`berlin-sprint-plan.md`](docs/berlin-sprint-plan.md): positioning, verbatim slide revisions, 5-day sprint plan
-- [`microsoft-toolkit-comparison.md`](docs/microsoft-toolkit-comparison.md): architecture comparison + 5 integration patterns + sprint recommendation
-- [`pitch-deck.md`](docs/pitch-deck.md): 10 slides with speaker notes and visual instructions
-- [`qa-rehearsal.md`](docs/qa-rehearsal.md): 8 rehearsed Q&A answers + 3 bonus questions
-- [`demo-narration.md`](docs/demo-narration.md): 90-second verbatim presenter script + recovery plan
+- [`business-case.md`](docs/business-case.md): the full written business case
+- [`pitch-script.md`](docs/pitch-script.md): the spoken pitch (4 speakers) + rehearsed panel Q&A
+- [`pitch-deck.md`](docs/pitch-deck.md): slides with speaker notes and visual instructions
+- [`qa-rehearsal.md`](docs/qa-rehearsal.md): rehearsed Q&A answers
+- [`demo-narration.md`](docs/demo-narration.md): verbatim presenter script + recovery plan
+- [`architecture.md`](docs/architecture.md), [`threat_model.md`](docs/threat_model.md), [`decision_framework.md`](docs/decision_framework.md), [`three-strike-walkthrough.md`](docs/three-strike-walkthrough.md): design write-ups
 
 ---
 
 ## Provenance
 
-Adapted from [ksolano220/sentra](https://github.com/ksolano220/sentra), first commit **February 27, 2026**. The core supervisor + rules + risk + three-strike engine was committed by **March 12, 2026**, five weeks before the Microsoft Agent Governance Toolkit was open-sourced on April 2, 2026. Convergent design, not derivative. Receipts in the original repo's commit history.
-
-The original project was built for IBM SkillsBuild's AI Experiential Learning Lab and received the following mentor recognition:
+Adapted from [ksolano220/sentra](https://github.com/ksolano220/sentra), first commit **February 27, 2026**. The core supervisor + rules + risk + three-strike engine was committed by **March 12, 2026**. Originally built for IBM SkillsBuild's AI Experiential Learning Lab, where it received the following mentor recognition:
 
 > "Amazing idea implementation. Good job, and great work on the project."
 > *IBM Mentor, SkillsBuild AI Experiential Learning Lab*
