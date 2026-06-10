@@ -111,7 +111,7 @@ agent  →  Sentra SDK  →  supervisor/main.py  →  rules.py  →  risk.py
 ```json
 {
   "timestamp": "2026-05-30 17:20:27",
-  "agent_id": "dragon-copilot-demo-001",
+  "agent_id": "clinical-ai-demo-001",
   "action_type": "PRESCRIBE_MEDICATION",
   "action_label": "Prescribe 25mg Methotrexate daily",
   "decision": "Blocked",
@@ -160,9 +160,6 @@ Pitch and design artifacts live in `docs/`:
 
 - [`business-case.md`](docs/business-case.md): the full written business case
 - [`pitch-script.md`](docs/pitch-script.md): the spoken pitch (4 speakers) + rehearsed panel Q&A
-- [`pitch-deck.md`](docs/pitch-deck.md): slides with speaker notes and visual instructions
-- [`qa-rehearsal.md`](docs/qa-rehearsal.md): rehearsed Q&A answers
-- [`demo-narration.md`](docs/demo-narration.md): verbatim presenter script + recovery plan
 - [`architecture.md`](docs/architecture.md), [`threat_model.md`](docs/threat_model.md), [`decision_framework.md`](docs/decision_framework.md), [`three-strike-walkthrough.md`](docs/three-strike-walkthrough.md): design write-ups
 
 ---

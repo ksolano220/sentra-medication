@@ -6,7 +6,7 @@ import type { SentraEvent } from "./types";
 export const SEED_EVENTS: SentraEvent[] = [
   {
     timestamp: "2026-05-30 17:20:31",
-    agent_id: "dragon-copilot-demo-001",
+    agent_id: "clinical-ai-demo-001",
     action_type: "PRESCRIBE_MEDICATION",
     action_label: "Prescribe 25mg Methotrexate daily",
     drug: "methotrexate",
@@ -45,7 +45,7 @@ export const SEED_EVENTS: SentraEvent[] = [
   },
   {
     timestamp: "2026-05-30 17:20:29",
-    agent_id: "dragon-copilot-demo-001",
+    agent_id: "clinical-ai-demo-001",
     action_type: "PRESCRIBE_MEDICATION",
     action_label: "Prescribe 25mg Methotrexate daily",
     drug: "methotrexate",
@@ -80,7 +80,7 @@ export const SEED_EVENTS: SentraEvent[] = [
   },
   {
     timestamp: "2026-05-30 17:20:27",
-    agent_id: "dragon-copilot-demo-001",
+    agent_id: "clinical-ai-demo-001",
     action_type: "PRESCRIBE_MEDICATION",
     action_label: "Prescribe 25mg Methotrexate daily",
     drug: "methotrexate",
@@ -216,7 +216,7 @@ export const SEED_EVENTS: SentraEvent[] = [
   // Older events so the Today / 7 days / 30 days tabs segment meaningfully.
   {
     timestamp: "2026-05-29 14:22:18",
-    agent_id: "dragon-copilot-demo-001",
+    agent_id: "clinical-ai-demo-001",
     action_type: "PRESCRIBE_MEDICATION",
     action_label: "Prescribe 40mg Atorvastatin daily",
     drug: "atorvastatin",

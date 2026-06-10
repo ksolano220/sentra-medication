@@ -5,7 +5,7 @@ Not a real FHIR server. Simulates the EPR-side context an agent would fetch
 before proposing a medication action. Returns Patient + AllergyIntolerance +
 current MedicationStatement in a FHIR-shaped (but minimal) envelope.
 
-In production this would be replaced by Azure Health Data Services (FHIR R4)
+In production this would be replaced by a production EPR via FHIR R4 (Epic, Oracle Health, CompuGroup Medical)
 or the hospital's actual EPR (Charite currently runs Oracle Cerner i.s.h.med;
 Epic rollout target end-2029).
 """

@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from sdk.client import Sentra
 
-AGENT_ID = "dragon-copilot-demo-001"
+AGENT_ID = "clinical-ai-demo-001"
 PATIENT_ID = "P-2026-001"
 
 
@@ -56,8 +56,8 @@ def main():
     print(
         "\n"
         "  Scenario:\n"
-        "    A clinical AI agent (e.g. Dragon Copilot, Healthcare Agent\n"
-        "    Service, an agent built on the Microsoft Agent Framework)\n"
+        "    A clinical AI agent (an AI medication assistant or\n"
+        "    prescribing copilot)\n"
         "    proposes a methotrexate 25mg DAILY prescription for patient\n"
         "    P-2026-001.\n"
         "\n"

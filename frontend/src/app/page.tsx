@@ -72,7 +72,7 @@ const PATIENT_NAMES: Record<string, string> = {
 };
 
 const AGENT_NAMES: Record<string, string> = {
-  "dragon-copilot-demo-001": "Clinical AI Assistant",
+  "clinical-ai-demo-001": "Clinical AI Assistant",
   "healthcare-agent-svc-002": "Pharmacy AI",
   "maf-clinical-pilot-003": "Clinical Pilot",
 };

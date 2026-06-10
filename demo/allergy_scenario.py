@@ -30,7 +30,7 @@ import requests
 
 from sdk.client import Sentra
 
-AGENT_ID = "dragon-copilot-demo-002"
+AGENT_ID = "clinical-ai-demo-002"
 PATIENT_ID = "P-2026-002"
 SUPERVISOR_URL = "http://127.0.0.1:8000"
 
