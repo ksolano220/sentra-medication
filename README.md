@@ -4,9 +4,18 @@
 
 Sentra is middleware that sits between an AI prescription system and execution. It intercepts every AI-generated medication order, validates it against live patient data fetched from the Electronic Patient Record (EPR) via FHIR R4, and returns **allow / block / escalate** in under 100 milliseconds, before the order ever reaches the pharmacy.
 
-NYU SPS Berlin GFI 2026 · Group 3 (Fizza, Kat, Jovan, Karla). Presented to **Google** and **Join Capital**; the final pitch was with the professor. **Won the pitch competition.** Adapted from [ksolano220/sentra](https://github.com/ksolano220/sentra).
+NYU SPS Berlin GFI 2026 · Group 3. Presented to **Google** and **Join Capital**; the final pitch was with the professor. **Won the pitch competition.** Adapted from [ksolano220/sentra](https://github.com/ksolano220/sentra).
 
 → Full business case: [docs/business-case.md](docs/business-case.md) · Pitch + Q&A: [docs/pitch-script.md](docs/pitch-script.md)
+
+## Team
+
+NYU SPS Berlin Global Field Intensive 2026, Group 3.
+
+- **Katherine Solano**, Team Lead
+- **Karla Ladd** ([kl5364@nyu.edu](mailto:kl5364@nyu.edu))
+- **Fizza Naqvi** ([fsn220@nyu.edu](mailto:fsn220@nyu.edu))
+- **Jovan Diaz** ([jd6513@nyu.edu](mailto:jd6513@nyu.edu))
 
 ---
 
@@ -154,7 +163,7 @@ MDR + AI Act apply concurrently to the agents Sentra gates. Hospital deployers s
 
 ## Context
 
-NYU SPS Berlin GFI 2026 group project, Group 3 (Fizza, Kat, Jovan, Karla). Presented to Google and Join Capital; the final pitch was delivered to the professor. Won the pitch competition.
+NYU SPS Berlin GFI 2026 group project, Group 3 (see [Team](#team)). Presented to Google and Join Capital; the final pitch was delivered to the professor. Won the pitch competition.
 
 Pitch and design artifacts live in `docs/`:
 
@@ -175,4 +184,4 @@ Adapted from [ksolano220/sentra](https://github.com/ksolano220/sentra), first co
 
 ## License
 
-MIT.
+[MIT](LICENSE). Copyright (c) 2026 Katherine Solano, Karla Ladd, Fizza Naqvi, Jovan Diaz.
