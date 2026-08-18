@@ -44,7 +44,7 @@ app.include_router(fhir_router)
 
 # Admin-token gate for state-mutating endpoints.
 # Open by default (local dev / demo scripts run without env var). When
-# SENTRA_ADMIN_TOKEN is set (production / Azure App Service app setting),
+# SENTRA_ADMIN_TOKEN is set (production),
 # state-mutating requests must include a matching X-Sentra-Admin-Token header.
 # Read-only endpoints (/health, /events, /fhir/*) remain open.
 ADMIN_TOKEN = os.environ.get("SENTRA_ADMIN_TOKEN")
