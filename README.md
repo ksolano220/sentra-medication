@@ -8,6 +8,10 @@ NYU SPS Berlin GFI 2026 · Group 3. Presented to **Google** and **Join Capital**
 
 → Full business case: [docs/business-case.md](docs/business-case.md) · Pitch + Q&A: [docs/pitch-script.md](docs/pitch-script.md)
 
+**Governance walkthrough:**
+
+https://github.com/ksolano220/sentra-medication/raw/main/assets/sentra-governance-demo.mp4
+
 ## Team
 
 NYU SPS Berlin Global Field Intensive 2026, Group 3.
